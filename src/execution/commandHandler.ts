@@ -169,6 +169,62 @@ export class CommandHandler {
           return null;
         }
 
+        // Intercept Minecraft specific commands
+        const isMinecraft = service.toLowerCase().includes('minecraft');
+        
+        if (isMinecraft) {
+          if (callbacks) {
+            if (apiCommand === 'help') {
+              const helpMsg = `**Minecraft RCON Commands Help:**\n` +
+                `Because Minecraft uses standard RCON, you can run **any** vanilla or modded console command!\n\n` +
+                `**Examples:**\n` +
+                `\`!w minecraft list\` - List all online players\n` +
+                `\`!w minecraft say <message>\` - Broadcast a message\n` +
+                `\`!w minecraft time set day\` - Set the time to day\n` +
+                `\`!w minecraft weather clear\` - Clear the weather\n` +
+                `\`!w minecraft kick <player> [reason]\` - Kick a player\n` +
+                `\`!w minecraft ban <player> [reason]\` - Ban a player\n` +
+                `\`!w minecraft pardon <player>\` - Unban a player\n` +
+                `\`!w minecraft whitelist add <player>\` - Add a player to the whitelist`;
+              await callbacks.reply({ content: helpMsg });
+              return null;
+            }
+
+            const rawCommand = `${apiCommand} ${args}`.trim();
+            const msgId = await callbacks.reply({ content: `⏳ Executing Minecraft RCON command \`${rawCommand}\`...` });
+            
+            try {
+              // 1. Fetch config to get RCON Password and Port dynamically
+              const configs = await this.client.getServiceConfigs(guid, host, service);
+              
+              const rconPasswordConfig = configs.configs?.find((c: any) => c.option === 'RCON Password');
+              const rconPassword = rconPasswordConfig?.value || '';
+
+              const rconPortConfig = configs.configs?.find((c: any) => c.option === 'RCON Port');
+              const rconPort = rconPortConfig?.value || 25575;
+
+              // 2. Initialize MinecraftClient
+              const { MinecraftClient } = require('../api/minecraftClient');
+              const detailsData = await this.client.getServiceDetails(guid, host, service);
+              const serverIp = detailsData.service?.ip || '127.0.0.1';
+
+              const mcClient = new MinecraftClient(serverIp, rconPort, rconPassword);
+
+              // 3. Execute command
+              const result = await mcClient.executeCommand(rawCommand);
+
+              if (msgId) {
+                await callbacks.editReply(msgId, { content: `✅ Minecraft RCON response:\n\`\`\`\n${result.slice(0, 1900)}\n\`\`\`` });
+              }
+            } catch (err: any) {
+              if (msgId) {
+                await callbacks.editReply(msgId, { content: `❌ Minecraft RCON error: ${err.message}` });
+              }
+            }
+          }
+          return null;
+        }
+
         // It's a custom command (e.g. broadcast)
         // Send it directly to Warlock's service console
         if (callbacks) {
