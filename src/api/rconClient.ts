@@ -1,6 +1,6 @@
 import { Rcon } from 'rcon-client';
 
-export class MinecraftClient {
+export class GenericRconClient {
   private rconParams: any;
 
   constructor(ip: string, port: number, password: string) {
