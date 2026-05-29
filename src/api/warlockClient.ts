@@ -1,7 +1,7 @@
 import makeFetchCookie from 'fetch-cookie';
 import { CookieJar } from 'tough-cookie';
 import * as cheerio from 'cheerio';
-const otplib = require('otplib');
+import * as speakeasy from 'speakeasy';
 
 export class WarlockClient {
   private baseUrl: string;
@@ -38,7 +38,10 @@ export class WarlockClient {
 
     let authcode = '';
     if (secret) {
-      authcode = otplib.authenticator.generate(secret);
+      authcode = speakeasy.totp({
+        secret: secret,
+        encoding: 'base32'
+      });
     }
 
     console.log('[WarlockClient] Submitting login form...');
