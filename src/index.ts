@@ -199,6 +199,9 @@ function connectGateway(platform: Platform) {
           },
           deleteReply: async (messageId: string) => {
             await deleteMessage(platform, message.channel_id, messageId);
+          },
+          deleteCommandMessage: async () => {
+            await deleteMessage(platform, message.channel_id, message.id);
           }
         },
         poller
