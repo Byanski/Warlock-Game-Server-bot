@@ -70,11 +70,11 @@ export class WarlockClient {
     console.log(`[WarlockClient] Login response: ${postRes.status} Location: ${postRes.headers.get('location')} URL: ${postRes.url}`);
 
     const loc = postRes.headers.get('location') || '';
-    if (postRes.status === 302 && (loc.includes('/dashboard') || loc === '/')) {
-      console.log('[WarlockClient] Authentication successful.');
+    if (postRes.status === 302 && !loc.includes('/login')) {
+      console.log('[WarlockClient] Authentication successful. Redirected to:', loc);
       this.isAuthenticated = true;
     } else {
-      if (postRes.url.includes('/dashboard')) {
+      if (postRes.url.includes('/dashboard') || postRes.url.includes('/2fa-setup') || postRes.url === this.baseUrl + '/') {
          console.log('[WarlockClient] Authentication successful.');
          this.isAuthenticated = true;
       } else {
