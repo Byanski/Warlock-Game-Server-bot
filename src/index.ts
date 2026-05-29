@@ -109,6 +109,48 @@ export async function deleteMessage(platform: Platform, channelId: string, messa
   }
 }
 
+export async function purgeMessages(platform: Platform, channelId: string, limit: number): Promise<void> {
+  try {
+    const url = platform.isDiscord 
+      ? `https://discord.com/api/v10/channels/${channelId}/messages?limit=${limit}` 
+      : `https://api.fluxer.app/v1/channels/${channelId}/messages?limit=${limit}`;
+
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Authorization': `Bot ${platform.token}` }
+    });
+    
+    if (!res.ok) return;
+    const messages = await res.json();
+    if (!Array.isArray(messages) || messages.length === 0) return;
+
+    const messageIds = messages.map((m: any) => m.id);
+
+    if (platform.isDiscord && messageIds.length > 1) {
+      const bulkUrl = `https://discord.com/api/v10/channels/${channelId}/messages/bulk-delete`;
+      const bulkRes = await fetch(bulkUrl, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bot ${platform.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ messages: messageIds })
+      });
+      if (!bulkRes.ok) {
+        for (const id of messageIds) {
+          await deleteMessage(platform, channelId, id);
+        }
+      }
+    } else {
+      for (const id of messageIds) {
+        await deleteMessage(platform, channelId, id);
+      }
+    }
+  } catch (error) {
+    console.error(`[${platform.name} API] Error purging messages:`, error);
+  }
+}
+
 // State management for persistent status messages
 const stateFile = path.join(__dirname, '..', 'data', 'state.json');
 let messageState: Record<string, Record<string, string>> = {};
@@ -182,33 +224,43 @@ function connectGateway(platform: Platform) {
       if (message.content.startsWith('!w ') && adminRoleId) {
         const hasRole = message.member?.roles?.includes(adminRoleId);
         if (!hasRole) {
-          await sendMessage(platform, message.channel_id, { content: '❌ You do not have permission to execute Warlock commands.' });
+          await sendMessage(platform, message.channel_id!, { content: '❌ You do not have permission to execute Warlock commands.' });
           return;
         }
+      }
+
+      if (message.content.startsWith('!w purge')) {
+        const parts = message.content.split(' ');
+        let amount = parseInt(parts[2] || '') || parseInt(parts[1] || ''); // Support "!w purge 50" or "!w purge 1-100" meaning !w purge <num>
+        if (!amount || amount < 1) amount = 10;
+        if (amount > 100) amount = 100;
+        
+        await purgeMessages(platform, message.channel_id!, amount + 1); // +1 to include the purge command itself
+        return;
       }
 
       const responseText = await commandHandler.handleMessage(
         message.content,
         {
           reply: async (payload: any) => {
-            const id = await sendMessage(platform, message.channel_id, payload);
+            const id = await sendMessage(platform, message.channel_id!, payload);
             return id;
           },
           editReply: async (messageId: string, payload: any) => {
-            await editMessage(platform, message.channel_id, messageId, payload);
+            await editMessage(platform, message.channel_id!, messageId, payload);
           },
           deleteReply: async (messageId: string) => {
-            await deleteMessage(platform, message.channel_id, messageId);
+            await deleteMessage(platform, message.channel_id!, messageId);
           },
           deleteCommandMessage: async () => {
-            await deleteMessage(platform, message.channel_id, message.id);
+            await deleteMessage(platform, message.channel_id!, message.id!);
           }
         },
         poller
       );
       
       if (responseText) {
-        await sendMessage(platform, message.channel_id, { content: responseText });
+        await sendMessage(platform, message.channel_id!, { content: responseText });
       }
     } catch (err) {
       console.error(`[${platform.name} Gateway] Message processing error:`, err);
