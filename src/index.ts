@@ -1,4 +1,9 @@
 import * as dotenv from 'dotenv';
+import { File } from 'buffer';
+
+if (!globalThis.File) {
+  (globalThis as any).File = File;
+}
 import * as path from 'path';
 import { SchemaLoader } from './schema/loader';
 import { CommandHandler } from './execution/commandHandler';
