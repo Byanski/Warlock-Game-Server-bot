@@ -244,21 +244,21 @@ export class CommandHandler {
         const isVein = srv.includes('vein');
 
         // Help-only games (No direct bot API integration yet)
-        if (isHytale || isValheim || isVein) {
+        if (isHytale || isVein) {
           if (callbacks && apiCommand === 'help') {
             return null; // Handled at top
           }
         }
 
         // RCON-based games
-        if (isMinecraft || isArk || isZomboid) {
+        if (isMinecraft || isArk || isZomboid || isValheim) {
           if (callbacks) {
             if (apiCommand === 'help') {
               return null; // Handled at top
             }
 
             const rawCommand = `${apiCommand} ${args}`.trim();
-            const gameTitle = isMinecraft ? 'Minecraft' : (isArk ? 'Ark' : 'Project Zomboid');
+            const gameTitle = isMinecraft ? 'Minecraft' : (isArk ? 'Ark' : (isZomboid ? 'Project Zomboid' : 'Valheim'));
             const msgId = await callbacks.reply({ content: `⏳ Executing ${gameTitle} RCON command \`${rawCommand}\`...` });
             
             try {
@@ -269,7 +269,7 @@ export class CommandHandler {
               const rconPassword = rconPasswordConfig?.value || '';
 
               const rconPortConfig = configs.configs?.find((c: any) => c.option === 'RCON Port');
-              const rconPort = rconPortConfig?.value || (isMinecraft ? 25575 : (isArk ? 27020 : 27015));
+              const rconPort = rconPortConfig?.value || (isMinecraft ? 25575 : (isArk ? 27020 : (isValheim ? 2458 : 27015)));
 
               // 2. Initialize GenericRconClient
               const { GenericRconClient } = require('../api/rconClient');
