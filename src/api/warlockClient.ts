@@ -18,9 +18,9 @@ export class WarlockClient {
   }
 
   public async authenticate() {
-    const username = process.env.WARLOCK_USERNAME || '';
-    const password = process.env.WARLOCK_PASSWORD || '';
-    const secret = process.env.WARLOCK_2FA_SECRET || '';
+    const username = (process.env.WARLOCK_USERNAME || '').trim();
+    const password = (process.env.WARLOCK_PASSWORD || '').trim();
+    const secret = (process.env.WARLOCK_2FA_SECRET || '').trim();
 
     if (!username || !password) {
       throw new Error('WARLOCK_USERNAME or WARLOCK_PASSWORD is not set.');
