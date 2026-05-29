@@ -38,6 +38,70 @@ export class CommandHandler {
        return `❌ Bot is still initializing, please try again.`;
     }
 
+    if (apiCommand === 'help' && callbacks) {
+      let helpMsg = '';
+      if (gameName.includes('minecraft')) {
+        helpMsg = `**Minecraft RCON Commands Help:**\n` +
+          `Because Minecraft uses standard RCON, you can run **any** vanilla or modded console command!\n\n` +
+          `**Examples:**\n` +
+          `\`!w minecraft list\` - List all online players\n` +
+          `\`!w minecraft say <message>\` - Broadcast a message\n` +
+          `\`!w minecraft time set day\` - Set the time to day\n` +
+          `\`!w minecraft weather clear\` - Clear the weather\n` +
+          `\`!w minecraft kick <player> [reason]\` - Kick a player\n` +
+          `\`!w minecraft ban <player> [reason]\` - Ban a player\n` +
+          `\`!w minecraft pardon <player>\` - Unban a player\n` +
+          `\`!w minecraft whitelist add <player>\` - Add a player to the whitelist`;
+      } else if (gameName.includes('ark')) {
+        helpMsg = `**Ark Survival Ascended RCON Commands Help:**\n` +
+          `Ark uses standard RCON, meaning you can pass commands directly to the console!\n\n` +
+          `**Examples:**\n` +
+          `\`!w ark listplayers\` - List online players\n` +
+          `\`!w ark broadcast <message>\` - Send a message to all players\n` +
+          `\`!w ark saveworld\` - Force a world save\n` +
+          `\`!w ark kickplayer <steamid>\` - Kick a player\n` +
+          `\`!w ark banplayer <steamid>\` - Ban a player\n` +
+          `For a full list of commands: https://ark.wiki.gg/wiki/Console_commands`;
+      } else if (gameName.includes('zomboid') || gameName.includes('pz')) {
+        helpMsg = `**Project Zomboid RCON Commands Help:**\n` +
+          `Project Zomboid uses standard RCON, meaning you can pass commands directly to the console!\n\n` +
+          `**Examples:**\n` +
+          `\`!w zomboid players\` - List online players\n` +
+          `\`!w zomboid servermsg <message>\` - Broadcast a server message\n` +
+          `\`!w zomboid save\` - Force a save\n` +
+          `\`!w zomboid kickuser <username>\` - Kick a player\n` +
+          `For details: https://zomboid-javadoc.com/41.78/`;
+      } else if (gameName.includes('hytale')) {
+        helpMsg = `**Hytale Commands Help:**\nHytale uses a REST API. For details, see: https://hytale-docs.com/docs/api/overview\n*(Bot integration coming soon)*`;
+      } else if (gameName.includes('valheim')) {
+        helpMsg = `**Valheim Commands Help:**\nValheim natively uses an in-game developer console. See: https://valheim.fandom.com/wiki/Developer_console\n*(Bot integration coming soon)*`;
+      } else if (gameName.includes('vein')) {
+        helpMsg = `**VEIN Commands Help:**\nVEIN uses an HTTP API. See: https://ramjet.notion.site/HTTP-API-279f9ec29f178064b0b5fd45bcba4e7b\n*(Bot integration coming soon)*`;
+      } else if (gameName.includes('palworld')) {
+        helpMsg = `**Palworld Commands Help:**\n` +
+          `\`!w palworld announce <message>\` - Broadcast a message to the server\n` +
+          `\`!w palworld kick <uid> [message]\` - Kick a player\n` +
+          `\`!w palworld ban <uid> [message]\` - Ban a player\n` +
+          `\`!w palworld unban <uid>\` - Unban a player\n` +
+          `\`!w palworld save\` - Force save the world\n` +
+          `\`!w palworld shutdown <seconds> [message]\` - Shutdown the server gracefully\n` +
+          `\`!w palworld force_stop\` - Immediately terminate the server\n` +
+          `\`!w palworld players\` - List all active players and their UIDs\n` +
+          `\`!w palworld metrics\` (or \`serverfps\`) - View server metrics and performance\n` +
+          `\`!w palworld info\` - View server information\n` +
+          `\`!w palworld settings\` - View game settings`;
+      }
+
+      if (helpMsg) {
+        const serviceDef = poller.getServiceByName(gameName);
+        if (!serviceDef) {
+          helpMsg = `❌ **Game \`${gameName}\` is not active on Warlock.**\n*(Wait a moment if you just started it, but here are the commands for reference:)*\n\n` + helpMsg;
+        }
+        await callbacks.reply({ content: helpMsg });
+        return null;
+      }
+    }
+
     const serviceDef = poller.getServiceByName(gameName);
     
     if (!serviceDef) {
@@ -99,23 +163,6 @@ export class CommandHandler {
 
         if (isPalworld && palworldCommands.includes(apiCommand)) {
           if (callbacks) {
-            if (apiCommand === 'help') {
-              const helpMsg = `**Palworld Commands Help:**\n` +
-                `\`!w palworld announce <message>\` - Broadcast a message to the server\n` +
-                `\`!w palworld kick <uid> [message]\` - Kick a player\n` +
-                `\`!w palworld ban <uid> [message]\` - Ban a player\n` +
-                `\`!w palworld unban <uid>\` - Unban a player\n` +
-                `\`!w palworld save\` - Force save the world\n` +
-                `\`!w palworld shutdown <seconds> [message]\` - Shutdown the server gracefully\n` +
-                `\`!w palworld force_stop\` - Immediately terminate the server\n` +
-                `\`!w palworld players\` - List all active players and their UIDs\n` +
-                `\`!w palworld metrics\` (or \`serverfps\`) - View server metrics and performance\n` +
-                `\`!w palworld info\` - View server information\n` +
-                `\`!w palworld settings\` - View game settings`;
-              await callbacks.reply({ content: helpMsg });
-              return null;
-            }
-
             const msgId = await callbacks.reply({ content: `⏳ Executing Palworld API command \`${apiCommand} ${args}\`...` });
             
             try {
@@ -181,16 +228,7 @@ export class CommandHandler {
         // Help-only games (No direct bot API integration yet)
         if (isHytale || isValheim || isVein) {
           if (callbacks && apiCommand === 'help') {
-            let helpMsg = '';
-            if (isHytale) {
-              helpMsg = `**Hytale Commands Help:**\nHytale uses a REST API. For details, see: https://hytale-docs.com/docs/api/overview\n*(Bot integration coming soon)*`;
-            } else if (isValheim) {
-              helpMsg = `**Valheim Commands Help:**\nValheim natively uses an in-game developer console. See: https://valheim.fandom.com/wiki/Developer_console\n*(Bot integration coming soon)*`;
-            } else if (isVein) {
-              helpMsg = `**VEIN Commands Help:**\nVEIN uses an HTTP API. See: https://ramjet.notion.site/HTTP-API-279f9ec29f178064b0b5fd45bcba4e7b\n*(Bot integration coming soon)*`;
-            }
-            await callbacks.reply({ content: helpMsg });
-            return null;
+            return null; // Handled at top
           }
         }
 
@@ -198,41 +236,7 @@ export class CommandHandler {
         if (isMinecraft || isArk || isZomboid) {
           if (callbacks) {
             if (apiCommand === 'help') {
-              let helpMsg = '';
-              if (isMinecraft) {
-                helpMsg = `**Minecraft RCON Commands Help:**\n` +
-                  `Because Minecraft uses standard RCON, you can run **any** vanilla or modded console command!\n\n` +
-                  `**Examples:**\n` +
-                  `\`!w minecraft list\` - List all online players\n` +
-                  `\`!w minecraft say <message>\` - Broadcast a message\n` +
-                  `\`!w minecraft time set day\` - Set the time to day\n` +
-                  `\`!w minecraft weather clear\` - Clear the weather\n` +
-                  `\`!w minecraft kick <player> [reason]\` - Kick a player\n` +
-                  `\`!w minecraft ban <player> [reason]\` - Ban a player\n` +
-                  `\`!w minecraft pardon <player>\` - Unban a player\n` +
-                  `\`!w minecraft whitelist add <player>\` - Add a player to the whitelist`;
-              } else if (isArk) {
-                helpMsg = `**Ark Survival Ascended RCON Commands Help:**\n` +
-                  `Ark uses standard RCON, meaning you can pass commands directly to the console!\n\n` +
-                  `**Examples:**\n` +
-                  `\`!w ark listplayers\` - List online players\n` +
-                  `\`!w ark broadcast <message>\` - Send a message to all players\n` +
-                  `\`!w ark saveworld\` - Force a world save\n` +
-                  `\`!w ark kickplayer <steamid>\` - Kick a player\n` +
-                  `\`!w ark banplayer <steamid>\` - Ban a player\n` +
-                  `For a full list of commands: https://ark.wiki.gg/wiki/Console_commands`;
-              } else if (isZomboid) {
-                helpMsg = `**Project Zomboid RCON Commands Help:**\n` +
-                  `Project Zomboid uses standard RCON, meaning you can pass commands directly to the console!\n\n` +
-                  `**Examples:**\n` +
-                  `\`!w zomboid players\` - List online players\n` +
-                  `\`!w zomboid servermsg <message>\` - Broadcast a server message\n` +
-                  `\`!w zomboid save\` - Force a save\n` +
-                  `\`!w zomboid kickuser <username>\` - Kick a player\n` +
-                  `For details: https://zomboid-javadoc.com/41.78/`;
-              }
-              await callbacks.reply({ content: helpMsg });
-              return null;
+              return null; // Handled at top
             }
 
             const rawCommand = `${apiCommand} ${args}`.trim();
