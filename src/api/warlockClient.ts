@@ -1,3 +1,4 @@
+import fetch from 'node-fetch';
 import makeFetchCookie from 'fetch-cookie';
 import { CookieJar } from 'tough-cookie';
 import * as cheerio from 'cheerio';
@@ -13,7 +14,7 @@ export class WarlockClient {
     this.baseUrl = process.env.WARLOCK_API_URL || 'http://127.0.0.1:8080';
     this.jar = new CookieJar();
     // Wrap global fetch to automatically handle Set-Cookie and Cookie headers
-    this.fetchWithCookies = makeFetchCookie(globalThis.fetch as any, this.jar);
+    this.fetchWithCookies = makeFetchCookie(fetch as unknown as any, this.jar);
   }
 
   public async authenticate() {
