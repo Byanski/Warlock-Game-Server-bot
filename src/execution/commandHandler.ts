@@ -244,7 +244,7 @@ export class CommandHandler {
         const isVein = srv.includes('vein');
 
         // Help-only games (No direct bot API integration yet)
-        if (isHytale || isVein) {
+        if (isHytale) {
           if (callbacks && apiCommand === 'help') {
             return null; // Handled at top
           }
@@ -287,6 +287,44 @@ export class CommandHandler {
             } catch (err: any) {
               if (msgId) {
                 await callbacks.editReply(msgId, { content: `❌ ${gameTitle} RCON error: ${err.message}` });
+              }
+            }
+          }
+          return null;
+        }
+
+        // VEIN HTTP API
+        if (isVein) {
+          if (callbacks) {
+            if (apiCommand === 'help') {
+              return null; // Handled at top
+            }
+
+            const msgId = await callbacks.reply({ content: `⏳ Executing VEIN API command \`${apiCommand}\`...` });
+            
+            try {
+              // 1. Fetch config to get HTTP Port dynamically
+              const configs = await this.client.getServiceConfigs(guid, host, service);
+              
+              const httpPortConfig = configs.configs?.find((c: any) => c.option === 'HTTP Port' || c.option === 'HTTPPort' || c.option === 'Port');
+              const httpPort = httpPortConfig?.value ? parseInt(httpPortConfig.value) : 8080;
+
+              // 2. Initialize VeinClient
+              const { VeinClient } = require('../api/veinClient');
+              const detailsData = await this.client.getServiceDetails(guid, host, service);
+              const serverIp = detailsData.service?.ip || '127.0.0.1';
+
+              const veinClient = new VeinClient(serverIp, httpPort);
+
+              // 3. Execute command
+              const result = await veinClient.execute(apiCommand, args);
+
+              if (msgId) {
+                await callbacks.editReply(msgId, { content: `✅ VEIN API response:\n\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1900)}\n\`\`\`` });
+              }
+            } catch (err: any) {
+              if (msgId) {
+                await callbacks.editReply(msgId, { content: `❌ VEIN API error: ${err.message}` });
               }
             }
           }
