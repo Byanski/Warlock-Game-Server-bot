@@ -57,10 +57,11 @@ const poller = new StatusPoller(async (channelId, embedPayload) => {
   await sendMessage(channelId, embedPayload);
 });
 
-// We simulate polling for Windrose every 60 seconds.
+// Start polling for all loaded game configurations
 const schema = schemaLoader.getSchema();
-if (schema['windrose']) {
-  poller.startPolling('windrose', schema['windrose'].guid, schema['windrose'].service_name, CHANNEL_ID, 60000);
+for (const gameName in schema) {
+  const gameConfig = schema[gameName];
+  poller.startPolling(gameName, gameConfig.guid, gameConfig.service_name, CHANNEL_ID, 60000);
 }
 
 function connectGateway() {
