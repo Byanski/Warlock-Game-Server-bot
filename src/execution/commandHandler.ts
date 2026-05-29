@@ -24,8 +24,8 @@ export class CommandHandler {
       return '❌ Invalid syntax. Use: `!w <game_name> <command> [args]`';
     }
 
-    const gameName = parts[0];
-    const apiCommand = parts[1];
+    const gameName = parts[0] as string;
+    const apiCommand = parts[1] as string;
     const args = parts.slice(2).join(' ');
 
     const schema = this.schemaLoader.getSchema();
