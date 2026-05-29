@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  warlock-bot:
+    build: .
+    container_name: warlock-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./game_commands.json:/app/game_commands.json:ro
