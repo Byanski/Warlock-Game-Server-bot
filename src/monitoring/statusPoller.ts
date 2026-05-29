@@ -113,11 +113,8 @@ export class StatusPoller {
       this.lastStatus[gameName] = status;
       this.lastPlayerCount[gameName] = playerCount;
 
-      if (isOffline && !justFailed) {
-        console.log(`[StatusPoller] Suppressing offline broadcast for ${gameName} to prevent channel spam.`);
-      } else if (!statusChanged && !playersChanged) {
-        console.log(`[StatusPoller] No changes for ${gameName}. Skipping broadcast to prevent spam.`);
-      } else {
+      // Always broadcast to ensure the dashboard remains live and recovers if deleted.
+      if (true) {
         const labels = (hist || []).map(h => h.time);
         const dataPoints = (hist || []).map(h => h.count);
         const chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, gameName);
