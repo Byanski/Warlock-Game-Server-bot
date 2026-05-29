@@ -6,10 +6,17 @@ export class StatusPoller {
   private failures: Record<string, number> = {};
   private lastStatus: Record<string, string> = {};
   private lastPlayerCount: Record<string, number> = {};
+  private overrideStatus: Record<string, string | null> = {};
   private client: WarlockClient;
 
-  constructor(private postEmbedCallback: (channelId: string, embedPayload: any) => Promise<void>) {
+  constructor(private postEmbedCallback: (gameName: string, embedPayload: any) => Promise<void>) {
     this.client = new WarlockClient();
+  }
+
+  public setOverrideStatus(gameName: string, status: string | null) {
+    this.overrideStatus[gameName] = status;
+    // Force an immediate update
+    this.lastStatus[gameName] = ''; 
   }
 
   private scheduleNextPoll(gameName: string, guid: string, serviceName: string, targetChannelId: string, baseIntervalMs: number) {
@@ -63,6 +70,10 @@ export class StatusPoller {
       }
 
       const failCount = this.failures[gameName] || 0;
+      
+      if (this.overrideStatus[gameName]) {
+        status = this.overrideStatus[gameName]!;
+      }
 
       // Build data for charts
       let playerCount = 0;
@@ -154,7 +165,7 @@ export class StatusPoller {
           }]
         };
 
-        await this.postEmbedCallback(targetChannelId, embedPayload);
+        await this.postEmbedCallback(gameName, embedPayload);
       }
 
     } catch (err) {

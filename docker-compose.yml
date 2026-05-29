@@ -9,3 +9,4 @@ services:
       - .env
     volumes:
       - ./game_commands.json:/app/game_commands.json:ro
+      - ./data:/app/data

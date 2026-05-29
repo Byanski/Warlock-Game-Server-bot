@@ -1,6 +1,14 @@
 import { SchemaLoader } from '../schema/loader';
 import { WarlockClient } from '../api/warlockClient';
 
+import { StatusPoller } from '../monitoring/statusPoller';
+
+export interface CommandCallbacks {
+  reply: (payload: any) => Promise<string | undefined>;
+  editReply: (messageId: string, payload: any) => Promise<void>;
+  deleteReply: (messageId: string) => Promise<void>;
+}
+
 export class CommandHandler {
   private client: WarlockClient;
 
@@ -8,11 +16,11 @@ export class CommandHandler {
     this.client = new WarlockClient();
   }
 
-  /**
-   * Parses and securely routes a command string like: !w windrose "kick SomePlayer"
-   * @param messageContent The raw text from the Fluxer message
-   */
-  public async handleMessage(messageContent: string): Promise<string | null> {
+  public async handleMessage(
+    messageContent: string,
+    callbacks?: CommandCallbacks,
+    poller?: StatusPoller
+  ): Promise<string | null> {
     const prefix = '!w ';
     if (!messageContent.startsWith(prefix)) return null;
 
@@ -61,6 +69,51 @@ export class CommandHandler {
     try {
       if (gameDef.type === 'control') {
         const action = gameDef.action as string;
+
+        if (callbacks && poller && (action === 'start' || action === 'stop')) {
+          const overrideState = action === 'start' ? 'Starting...' : 'Stopping...';
+          poller.setOverrideStatus(gameName, overrideState);
+          
+          const msgId = await callbacks.reply({ content: `⏳ Server is ${action}ing...` });
+          
+          await this.client.controlService(guid, hostId, serviceName, action);
+
+          if (msgId) {
+            // Poll briefly to wait for status to update
+            const targetStatus = action === 'start' ? 'running' : 'stopped';
+            let reachedTarget = false;
+            
+            for (let i = 0; i < 15; i++) { // Poll 15 times (30s)
+              await new Promise(r => setTimeout(r, 2000));
+              try {
+                const details = await this.client.getServiceDetails(guid, hostId, serviceName);
+                const currentStatus = details.service ? details.service.status : details.status;
+                if (currentStatus === targetStatus || (targetStatus === 'running' && currentStatus === 'ONLINE') || (targetStatus === 'stopped' && currentStatus === 'OFFLINE')) {
+                  reachedTarget = true;
+                  break;
+                }
+              } catch (e) {
+                if (targetStatus === 'stopped') {
+                  reachedTarget = true; // Error usually means it's offline
+                  break;
+                }
+              }
+            }
+
+            poller.setOverrideStatus(gameName, null);
+
+            if (reachedTarget) {
+               await callbacks.editReply(msgId, { content: `✅ Server is ${action === 'start' ? 'started' : 'stopped'}!` });
+            } else {
+               await callbacks.editReply(msgId, { content: `⚠️ Command sent, but timed out waiting for status confirmation.` });
+            }
+            
+            setTimeout(() => callbacks.deleteReply(msgId), 7000);
+          }
+          
+          return null; // Don't return standard response since we handled it
+        }
+
         await this.client.controlService(guid, hostId, serviceName, action);
         return `✅ **Success:** Sent \`${action}\` command to ${gameName}.`;
       } else if (gameDef.type === 'custom') {
@@ -75,6 +128,7 @@ export class CommandHandler {
       
       return `❌ Unknown command type in schema.`;
     } catch (e: any) {
+      if (poller) poller.setOverrideStatus(gameName, null);
       return `❌ **Execution Failed**\n\`\`\`text\n${e.message}\n\`\`\``;
     }
   }
