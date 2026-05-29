@@ -72,11 +72,29 @@ export class CommandHandler {
           `\`!w zomboid kickuser <username>\` - Kick a player\n` +
           `For details: https://zomboid-javadoc.com/41.78/`;
       } else if (gameName.includes('hytale')) {
-        helpMsg = `**Hytale Commands Help:**\nHytale uses a REST API. For details, see: https://hytale-docs.com/docs/api/overview\n*(Bot integration coming soon)*`;
+        helpMsg = `**Hytale Commands Help:**\n` +
+          `\`!w hytale status\` - View server status\n` +
+          `\`!w hytale players\` - List active players\n` +
+          `\`!w hytale kick <player>\` - Kick a player\n` +
+          `\`!w hytale ban <player>\` - Ban a player\n` +
+          `*(Bot integration coming soon)*`;
       } else if (gameName.includes('valheim')) {
-        helpMsg = `**Valheim Commands Help:**\nValheim natively uses an in-game developer console. See: https://valheim.fandom.com/wiki/Developer_console\n*(Bot integration coming soon)*`;
+        helpMsg = `**Valheim Commands Help:**\n` +
+          `\`!w valheim save\` - Force save the world\n` +
+          `\`!w valheim kick <player>\` - Kick a player\n` +
+          `\`!w valheim ban <player>\` - Ban a player\n` +
+          `\`!w valheim unban <player>\` - Unban a player\n` +
+          `\`!w valheim ping\` - Ping the server\n` +
+          `\`!w valheim info\` - Print system info\n` +
+          `*(Bot integration coming soon)*`;
       } else if (gameName.includes('vein')) {
-        helpMsg = `**VEIN Commands Help:**\nVEIN uses an HTTP API. See: https://ramjet.notion.site/HTTP-API-279f9ec29f178064b0b5fd45bcba4e7b\n*(Bot integration coming soon)*`;
+        helpMsg = `**VEIN Commands Help:**\n` +
+          `\`!w vein status\` - View server status\n` +
+          `\`!w vein characters\` - List characters\n` +
+          `\`!w vein players\` - List all players\n` +
+          `\`!w vein time\` - Get current game time\n` +
+          `\`!w vein weather\` - Get current weather\n` +
+          `*(Bot integration coming soon)*`;
       } else if (gameName.includes('palworld')) {
         helpMsg = `**Palworld Commands Help:**\n` +
           `\`!w palworld announce <message>\` - Broadcast a message to the server\n` +
