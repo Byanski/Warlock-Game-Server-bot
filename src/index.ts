@@ -76,20 +76,7 @@ function connectGateway() {
   }
 
   ws.on('open', () => {
-    console.log('[Gateway] Connected to Fluxer WebSocket.');
-    const identifyPayload = {
-      op: 2,
-      d: {
-        token: TOKEN,
-        intents: 513, // Guilds + Guild Messages (conceptual)
-        properties: {
-          $os: process.platform,
-          $browser: 'WarlockBot',
-          $device: 'WarlockBot'
-        }
-      }
-    };
-    ws.send(JSON.stringify(identifyPayload));
+    console.log('[Gateway] Connected to Fluxer WebSocket. Waiting for OP 10 Hello...');
   });
 
   ws.on('message', async (data: WebSocket.Data) => {
@@ -103,6 +90,22 @@ function connectGateway() {
         setInterval(() => {
           ws.send(JSON.stringify({ op: 1, d: null }));
         }, heartbeatInterval);
+
+        // Send IDENTIFY
+        console.log('[Gateway] Received Hello. Sending IDENTIFY...');
+        const identifyPayload = {
+          op: 2,
+          d: {
+            token: TOKEN,
+            intents: 513, // Guilds + Guild Messages
+            properties: {
+              $os: process.platform,
+              $browser: 'WarlockBot',
+              $device: 'WarlockBot'
+            }
+          }
+        };
+        ws.send(JSON.stringify(identifyPayload));
       }
 
       // Handle message create events
