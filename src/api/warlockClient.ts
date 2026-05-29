@@ -67,7 +67,10 @@ export class WarlockClient {
       redirect: 'manual'
     });
 
-    if (postRes.status === 302 && postRes.headers.get('location')?.includes('/dashboard')) {
+    console.log(`[WarlockClient] Login response: ${postRes.status} Location: ${postRes.headers.get('location')} URL: ${postRes.url}`);
+
+    const loc = postRes.headers.get('location') || '';
+    if (postRes.status === 302 && (loc.includes('/dashboard') || loc === '/')) {
       console.log('[WarlockClient] Authentication successful.');
       this.isAuthenticated = true;
     } else {
