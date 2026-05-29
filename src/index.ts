@@ -61,7 +61,9 @@ const poller = new StatusPoller(async (channelId, embedPayload) => {
 const schema = schemaLoader.getSchema();
 for (const gameName in schema) {
   const gameConfig = schema[gameName];
-  poller.startPolling(gameName, gameConfig.guid, gameConfig.service_name, CHANNEL_ID, 60000);
+  if (gameConfig) {
+    poller.startPolling(gameName, gameConfig.guid, gameConfig.service_name, CHANNEL_ID, 60000);
+  }
 }
 
 function connectGateway() {
