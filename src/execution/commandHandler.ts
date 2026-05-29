@@ -95,10 +95,27 @@ export class CommandHandler {
       } else {
         // Intercept Palworld specific commands if the service is Palworld
         const isPalworld = service.toLowerCase().includes('palworld');
-        const palworldCommands = ['announce', 'kick', 'ban', 'unban', 'save', 'shutdown', 'force_stop', 'players'];
+        const palworldCommands = ['announce', 'kick', 'ban', 'unban', 'save', 'shutdown', 'force_stop', 'players', 'info', 'metrics', 'settings', 'serverfps', 'help'];
 
         if (isPalworld && palworldCommands.includes(apiCommand)) {
           if (callbacks) {
+            if (apiCommand === 'help') {
+              const helpMsg = `**Palworld Commands Help:**\n` +
+                `\`!w palworld announce <message>\` - Broadcast a message to the server\n` +
+                `\`!w palworld kick <uid> [message]\` - Kick a player\n` +
+                `\`!w palworld ban <uid> [message]\` - Ban a player\n` +
+                `\`!w palworld unban <uid>\` - Unban a player\n` +
+                `\`!w palworld save\` - Force save the world\n` +
+                `\`!w palworld shutdown <seconds> [message]\` - Shutdown the server gracefully\n` +
+                `\`!w palworld force_stop\` - Immediately terminate the server\n` +
+                `\`!w palworld players\` - List all active players and their UIDs\n` +
+                `\`!w palworld metrics\` (or \`serverfps\`) - View server metrics and performance\n` +
+                `\`!w palworld info\` - View server information\n` +
+                `\`!w palworld settings\` - View game settings`;
+              await callbacks.reply({ content: helpMsg });
+              return null;
+            }
+
             const msgId = await callbacks.reply({ content: `⏳ Executing Palworld API command \`${apiCommand} ${args}\`...` });
             
             try {
@@ -113,8 +130,6 @@ export class CommandHandler {
 
               // 2. Initialize PalworldClient
               const { PalworldClient } = require('../api/palworldClient');
-              // We need the service IP. For simplicity, we can fetch getServiceDetails again or grab it from serviceDef?
-              // serviceDef doesn't store IP right now. Let's fetch details.
               const detailsData = await this.client.getServiceDetails(guid, host, service);
               const serverIp = detailsData.service?.ip || '127.0.0.1';
 
@@ -127,10 +142,19 @@ export class CommandHandler {
                 case 'kick': result = await pwClient.kick(args.split(' ')[0], args.split(' ').slice(1).join(' ')); break;
                 case 'ban': result = await pwClient.ban(args.split(' ')[0], args.split(' ').slice(1).join(' ')); break;
                 case 'unban': result = await pwClient.unban(args.split(' ')[0]); break;
-                case 'save': result = await pwClient.save(); break;
+                case 'save': 
+                  await pwClient.save(); 
+                  result = { message: '✅ Game successfully saved.' }; 
+                  break;
                 case 'shutdown': result = await pwClient.shutdown(60, args); break;
                 case 'force_stop': result = await pwClient.forceStop(); break;
                 case 'players': result = await pwClient.getPlayers(); break;
+                case 'info': result = await pwClient.info(); break;
+                case 'metrics': 
+                case 'serverfps':
+                  result = await pwClient.metrics(); 
+                  break;
+                case 'settings': result = await pwClient.settings(); break;
               }
 
               if (msgId) {

@@ -28,10 +28,23 @@ export class PalworldClient {
       if (!res.ok) {
         throw new Error(`Palworld REST API Error: ${res.status} ${res.statusText}`);
       }
-      return await res.json();
+      const text = await res.text();
+      return text ? JSON.parse(text) : { success: true };
     } catch (err: any) {
       throw new Error(`Failed to contact Palworld REST API: ${err.message}`);
     }
+  }
+
+  public async info() {
+    return this.request('/info', 'GET');
+  }
+
+  public async metrics() {
+    return this.request('/metrics', 'GET');
+  }
+
+  public async settings() {
+    return this.request('/settings', 'GET');
   }
 
   public async announce(message: string) {
