@@ -312,7 +312,7 @@ export class CommandHandler {
               const configs = await this.client.getServiceConfigs(guid, host, service);
               
               const httpPortConfig = configs.configs?.find((c: any) => c.option === 'HTTP Port' || c.option === 'HTTPPort');
-              const httpPort = httpPortConfig?.value ? parseInt(httpPortConfig.value) : (primaryPort || 8080);
+              const httpPort = httpPortConfig?.value ? parseInt(httpPortConfig.value) : (primaryPort || 4726);
 
               // 3. Initialize VeinClient
               const { VeinClient } = require('../api/veinClient');

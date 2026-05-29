@@ -4,7 +4,7 @@ export class VeinClient {
   private ip: string;
   private port: number;
 
-  constructor(ip: string, port: number = 8080) {
+  constructor(ip: string, port: number = 4726) {
     this.ip = ip;
     this.port = port;
   }
