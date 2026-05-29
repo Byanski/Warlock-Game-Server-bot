@@ -107,6 +107,16 @@ function connectGateway() {
         // Ignore bot messages
         if (message.author?.bot) return;
 
+        // Check for admin role before processing command
+        const adminRoleId = process.env.ADMIN_ROLE_ID;
+        if (message.content.startsWith('!w ') && adminRoleId) {
+          const hasRole = message.member?.roles?.includes(adminRoleId);
+          if (!hasRole) {
+            await sendMessage(message.channel_id, { content: '❌ You do not have permission to execute Warlock commands.' });
+            return;
+          }
+        }
+
         // Process command
         const responseText = await commandHandler.handleMessage(message.content);
         

@@ -3,13 +3,29 @@ import { ChartGenerator } from './charts';
 
 export class StatusPoller {
   private history: Record<string, { time: string, count: number }[]> = {};
+  private failures: Record<string, number> = {};
   private client: WarlockClient;
 
   constructor(private postEmbedCallback: (channelId: string, embedPayload: any) => Promise<void>) {
     this.client = new WarlockClient();
   }
 
-  public async pollAndBroadcast(gameName: string, guid: string, serviceName: string, targetChannelId: string) {
+  private scheduleNextPoll(gameName: string, guid: string, serviceName: string, targetChannelId: string, baseIntervalMs: number) {
+    let interval = baseIntervalMs;
+    const failCount = this.failures[gameName] || 0;
+    
+    if (failCount > 0) {
+      // Exponential backoff: base * 2^failures, capped at 1 hour (3600000 ms)
+      interval = Math.min(baseIntervalMs * Math.pow(2, failCount - 1), 3600000);
+      console.log(`[StatusPoller] API Unreachable. Backing off for ${gameName}. Next poll in ${interval / 1000}s`);
+    }
+
+    setTimeout(() => {
+      this.pollAndBroadcast(gameName, guid, serviceName, targetChannelId, baseIntervalMs);
+    }, interval);
+  }
+
+  public async pollAndBroadcast(gameName: string, guid: string, serviceName: string, targetChannelId: string, baseIntervalMs: number) {
     try {
       console.log(`[StatusPoller] Polling status for ${gameName}...`);
       
@@ -17,67 +33,91 @@ export class StatusPoller {
       
       let stdout = '';
       let status = 'UNKNOWN';
+      let isRecovering = false;
+
       try {
         const details = await this.client.getServiceDetails(guid, hostId, serviceName);
-        // Map Warlock API response to status text and player count
         status = details.status || 'ONLINE';
         stdout = JSON.stringify(details, null, 2);
-      } catch (err) {
-        // Fallback for development if API is unreachable
+        
+        const prevFailures = this.failures[gameName] || 0;
+        if (prevFailures > 0) {
+          isRecovering = true;
+          console.log(`[StatusPoller] Connection to Warlock restored for ${gameName}.`);
+        }
+        this.failures[gameName] = 0; // Reset failures
+
+      } catch (err: any) {
         status = 'OFFLINE';
-        stdout = `Could not reach Warlock API.`;
+        stdout = `Error: ${err.message}`;
+        this.failures[gameName] = (this.failures[gameName] || 0) + 1;
       }
 
-      // We attempt to extract a player count if the API exposes it, otherwise default to random for demo charting
+      const failCount = this.failures[gameName] || 0;
+
+      // Build data for charts
       let playerCount = 0;
       const playerMatch = stdout.match(/"players":\s*(\d+)/i);
       if (playerMatch && playerMatch[1]) {
         playerCount = parseInt(playerMatch[1], 10);
-      } else {
-        playerCount = Math.floor(Math.random() * 50); // Fallback metric
+      } else if (status === 'ONLINE') {
+        playerCount = Math.floor(Math.random() * 50); // Fallback metric for demo if API omits players
       }
 
-      // Track history
-      if (!this.history[gameName]) this.history[gameName] = [];
+      if (!this.history[gameName]) {
+        this.history[gameName] = [];
+      }
       const now = new Date();
       const timeStr = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
-      this.history[gameName].push({ time: timeStr, count: playerCount });
+      const hist = this.history[gameName];
+      if (hist) {
+        hist.push({ time: timeStr, count: playerCount });
+      }
       
-      // Keep last 15 data points
-      if (this.history[gameName].length > 15) {
-        this.history[gameName].shift();
+      if (hist && hist.length > 15) {
+        hist.shift();
       }
 
-      const labels = this.history[gameName].map(h => h.time);
-      const dataPoints = this.history[gameName].map(h => h.count);
-      const chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, gameName);
+      // Determine if we should broadcast
+      // Suppress broadcast if offline and it's not the FIRST failure
+      const justFailed = failCount === 1;
+      const isOffline = failCount > 0;
 
-      // Build Fluxer rich embed
-      const embedPayload = {
-        embeds: [{
-          title: `🎮 ${gameName.toUpperCase()} Server Status`,
-          description: `**Status:** ${status}\n**Metrics:**\n\`\`\`json\n${stdout.substring(0, 1000)}\n\`\`\``,
-          color: status === 'ONLINE' ? 0x57F287 : 0xED4245,
-          image: {
-            url: chartUrl
-          },
-          footer: {
-            text: 'Warlock Monitor'
-          },
-          timestamp: new Date().toISOString()
-        }]
-      };
+      if (isOffline && !justFailed) {
+        console.log(`[StatusPoller] Suppressing offline broadcast for ${gameName} to prevent channel spam.`);
+      } else {
+        const labels = (hist || []).map(h => h.time);
+        const dataPoints = (hist || []).map(h => h.count);
+        const chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, gameName);
 
-      await this.postEmbedCallback(targetChannelId, embedPayload);
+        let titleStr = `🎮 ${gameName.toUpperCase()} Server Status`;
+        if (justFailed) titleStr += ` [API DISCONNECTED]`;
+        if (isRecovering) titleStr += ` [API RESTORED]`;
+
+        const embedPayload = {
+          embeds: [{
+            title: titleStr,
+            description: `**Status:** ${status}\n**Metrics:**\n\`\`\`json\n${stdout.substring(0, 1000)}\n\`\`\``,
+            color: status === 'ONLINE' ? 0x57F287 : 0xED4245,
+            image: { url: chartUrl },
+            footer: { text: 'Warlock Monitor' },
+            timestamp: new Date().toISOString()
+          }]
+        };
+
+        await this.postEmbedCallback(targetChannelId, embedPayload);
+      }
+
     } catch (err) {
-      console.error(`[StatusPoller] Failed to poll ${gameName}:`, err);
+      console.error(`[StatusPoller] Critical failure in poll loop for ${gameName}:`, err);
+    } finally {
+      // Always schedule the next poll
+      this.scheduleNextPoll(gameName, guid, serviceName, targetChannelId, baseIntervalMs);
     }
   }
 
   public startPolling(gameName: string, guid: string, serviceName: string, targetChannelId: string, intervalMs: number = 60000) {
-    this.pollAndBroadcast(gameName, guid, serviceName, targetChannelId);
-    setInterval(() => {
-      this.pollAndBroadcast(gameName, guid, serviceName, targetChannelId);
-    }, intervalMs);
+    // Kick off the first poll
+    this.pollAndBroadcast(gameName, guid, serviceName, targetChannelId, intervalMs);
   }
 }
