@@ -1,4 +1,5 @@
 import * as dotenv from 'dotenv';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import { File } from 'buffer';
 
 if (!globalThis.File) {
@@ -8,7 +9,9 @@ import * as path from 'path';
 import { SchemaLoader } from './schema/loader';
 import { CommandHandler } from './execution/commandHandler';
 import { StatusPoller } from './monitoring/statusPoller';
-import WebSocket from 'ws';
+import { Client, GatewayDispatchEvents } from '@discordjs/core';
+import { REST } from '@discordjs/rest';
+import { WebSocketManager } from '@discordjs/ws';
 
 dotenv.config();
 
@@ -60,92 +63,44 @@ if (schema['windrose']) {
   poller.startPolling('windrose', schema['windrose'].guid, schema['windrose'].service_name, CHANNEL_ID, 60000);
 }
 
-// 4. Connect to Fluxer WebSocket Gateway (mock endpoint conceptually based on docs)
-// Since Fluxer Gateway is modeled after Discord, it usually requires sending IDENTIFY.
-// We'll write a conceptual WebSocket wrapper here.
 function connectGateway() {
-  // Using a mock gateway URL for this example since we don't have the exact gateway path
-  const wsUrl = 'wss://gateway.fluxer.app/?v=1&encoding=json';
-  let ws: WebSocket;
-  
-  try {
-    ws = new WebSocket(wsUrl);
-  } catch (err) {
-    console.log('[Gateway] Cannot connect to mock WSS endpoint, continuing in standalone mode.');
-    return;
-  }
-
-  ws.on('open', () => {
-    console.log('[Gateway] Connected to Fluxer WebSocket. Waiting for OP 10 Hello...');
+  const rest = new REST({ api: 'https://api.fluxer.app', version: '1' }).setToken(TOKEN);
+  const gateway = new WebSocketManager({
+    intents: 0,
+    rest,
+    token: TOKEN,
+    version: '1',
   });
+  const client = new Client({ rest, gateway });
 
-  ws.on('message', async (data: WebSocket.Data) => {
+  client.on(GatewayDispatchEvents.MessageCreate, async ({ data: message }) => {
     try {
-      const payload = JSON.parse(data.toString());
-      
-      // Handle heartbeats and acks conceptually...
-      if (payload.op === 10) {
-        // Hello event, start heartbeat
-        const heartbeatInterval = payload.d.heartbeat_interval;
-        setInterval(() => {
-          ws.send(JSON.stringify({ op: 1, d: null }));
-        }, heartbeatInterval);
+      if (message.author?.bot) return;
 
-        // Send IDENTIFY
-        console.log('[Gateway] Received Hello. Sending IDENTIFY...');
-        const identifyPayload = {
-          op: 2,
-          d: {
-            token: TOKEN,
-            intents: 513, // Guilds + Guild Messages
-            properties: {
-              $os: process.platform,
-              $browser: 'WarlockBot',
-              $device: 'WarlockBot'
-            }
-          }
-        };
-        ws.send(JSON.stringify(identifyPayload));
+      const adminRoleId = process.env.ADMIN_ROLE_ID;
+      if (message.content.startsWith('!w ') && adminRoleId) {
+        const hasRole = message.member?.roles?.includes(adminRoleId);
+        if (!hasRole) {
+          await sendMessage(message.channel_id, { content: '❌ You do not have permission to execute Warlock commands.' });
+          return;
+        }
       }
 
-      // Handle message create events
-      if (payload.t === 'MESSAGE_CREATE') {
-        const message = payload.d;
-        
-        // Ignore bot messages
-        if (message.author?.bot) return;
-
-        // Check for admin role before processing command
-        const adminRoleId = process.env.ADMIN_ROLE_ID;
-        if (message.content.startsWith('!w ') && adminRoleId) {
-          const hasRole = message.member?.roles?.includes(adminRoleId);
-          if (!hasRole) {
-            await sendMessage(message.channel_id, { content: '❌ You do not have permission to execute Warlock commands.' });
-            return;
-          }
-        }
-
-        // Process command
-        const responseText = await commandHandler.handleMessage(message.content);
-        
-        if (responseText) {
-          await sendMessage(message.channel_id, { content: responseText });
-        }
+      const responseText = await commandHandler.handleMessage(message.content);
+      
+      if (responseText) {
+        await sendMessage(message.channel_id, { content: responseText });
       }
     } catch (err) {
       console.error('[Gateway] Message processing error:', err);
     }
   });
 
-  ws.on('close', () => {
-    console.log('[Gateway] Connection closed. Reconnecting in 5s...');
-    setTimeout(connectGateway, 5000);
+  client.on(GatewayDispatchEvents.Ready, ({ data }) => {
+    console.log(`[Gateway] Fluxer Gateway ready as @${data.user.username}#${data.user.discriminator ?? '0000'}.`);
   });
-  
-  ws.on('error', (err) => {
-    // Expected to error out since gateway.fluxer.app is a mock
-    console.log('[Gateway] Connection error (mock gateway).');
-  });
+
+  gateway.connect();
 }
 
 connectGateway();
