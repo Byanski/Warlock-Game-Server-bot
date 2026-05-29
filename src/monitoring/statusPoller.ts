@@ -4,6 +4,8 @@ import { ChartGenerator } from './charts';
 export class StatusPoller {
   private history: Record<string, { time: string, count: number }[]> = {};
   private failures: Record<string, number> = {};
+  private lastStatus: Record<string, string> = {};
+  private lastPlayerCount: Record<string, number> = {};
   private client: WarlockClient;
 
   constructor(private postEmbedCallback: (channelId: string, embedPayload: any) => Promise<void>) {
@@ -37,8 +39,14 @@ export class StatusPoller {
 
       try {
         const details = await this.client.getServiceDetails(guid, hostId, serviceName);
-        status = details.status || 'ONLINE';
-        stdout = JSON.stringify(details, null, 2);
+        
+        if (details.service) {
+          status = details.service.status || 'ONLINE';
+          stdout = JSON.stringify(details.service, null, 2);
+        } else {
+          status = details.status || 'ONLINE';
+          stdout = JSON.stringify(details, null, 2);
+        }
         
         const prevFailures = this.failures[gameName] || 0;
         if (prevFailures > 0) {
@@ -58,11 +66,16 @@ export class StatusPoller {
 
       // Build data for charts
       let playerCount = 0;
-      const playerMatch = stdout.match(/"players":\s*(\d+)/i);
-      if (playerMatch && playerMatch[1]) {
-        playerCount = parseInt(playerMatch[1], 10);
-      } else if (status === 'ONLINE') {
-        playerCount = Math.floor(Math.random() * 50); // Fallback metric for demo if API omits players
+      if (status === 'running' || status === 'ONLINE') {
+        const parsedDetails = JSON.parse(stdout);
+        if (parsedDetails.player_count !== undefined) {
+          playerCount = parsedDetails.player_count;
+        } else {
+          const playerMatch = stdout.match(/"players":\s*(\d+)/i);
+          if (playerMatch && playerMatch[1]) {
+            playerCount = parseInt(playerMatch[1], 10);
+          }
+        }
       }
 
       if (!this.history[gameName]) {
@@ -80,12 +93,19 @@ export class StatusPoller {
       }
 
       // Determine if we should broadcast
-      // Suppress broadcast if offline and it's not the FIRST failure
       const justFailed = failCount === 1;
       const isOffline = failCount > 0;
+      
+      const statusChanged = this.lastStatus[gameName] !== status;
+      const playersChanged = this.lastPlayerCount[gameName] !== playerCount;
+      
+      this.lastStatus[gameName] = status;
+      this.lastPlayerCount[gameName] = playerCount;
 
       if (isOffline && !justFailed) {
         console.log(`[StatusPoller] Suppressing offline broadcast for ${gameName} to prevent channel spam.`);
+      } else if (!statusChanged && !playersChanged) {
+        console.log(`[StatusPoller] No changes for ${gameName}. Skipping broadcast to prevent spam.`);
       } else {
         const labels = (hist || []).map(h => h.time);
         const dataPoints = (hist || []).map(h => h.count);
@@ -99,7 +119,7 @@ export class StatusPoller {
           embeds: [{
             title: titleStr,
             description: `**Status:** ${status}\n**Metrics:**\n\`\`\`json\n${stdout.substring(0, 1000)}\n\`\`\``,
-            color: status === 'ONLINE' ? 0x57F287 : 0xED4245,
+            color: status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245,
             image: { url: chartUrl },
             footer: { text: 'Warlock Monitor' },
             timestamp: new Date().toISOString()
