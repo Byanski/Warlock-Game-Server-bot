@@ -6,24 +6,19 @@ if (!globalThis.File) {
   (globalThis as any).File = File;
 }
 import * as path from 'path';
-import { SchemaLoader } from './schema/loader';
 import { CommandHandler } from './execution/commandHandler';
 import { StatusPoller } from './monitoring/statusPoller';
 import { Client, GatewayDispatchEvents, GatewayIntentBits } from '@discordjs/core';
 import { REST } from '@discordjs/rest';
 import { WebSocketManager } from '@discordjs/ws';
+import * as fs from 'fs';
 
 dotenv.config();
 
 console.log('[App] Starting Bot for Warlock...');
 
-// 1. Load the dynamic route configuration
-const schemaPath = path.join(__dirname, '..', 'game_commands.json');
-const schemaLoader = new SchemaLoader(schemaPath);
-schemaLoader.load();
-
-// 2. Initialize the Command Handler
-const commandHandler = new CommandHandler(schemaLoader);
+// Initialize the Command Handler
+const commandHandler = new CommandHandler();
 
 interface Platform {
   name: string;
@@ -50,8 +45,6 @@ if (process.env.DISCORD_TOKEN) {
     isDiscord: true
   });
 }
-
-import * as fs from 'fs';
 
 // Helper functions to send/edit/delete messages via REST
 async function sendMessage(platform: Platform, channelId: string, payload: any): Promise<string | undefined> {
@@ -137,7 +130,7 @@ function saveState() {
   }
 }
 
-// 3. Start the Status Poller
+// Start the Status Poller
 const poller = new StatusPoller(async (gameName, embedPayload) => {
   if (!messageState[gameName]) messageState[gameName] = {};
 
@@ -162,14 +155,8 @@ const poller = new StatusPoller(async (gameName, embedPayload) => {
   }
 });
 
-// Start polling for all loaded game configurations
-const schema = schemaLoader.getSchema();
-for (const gameName in schema) {
-  const gameConfig = schema[gameName];
-  if (gameConfig) {
-    poller.startPolling(gameName, gameConfig.guid, gameConfig.service_name, 'ignored', 30000); // Poll every 30s
-  }
-}
+// Kick off dynamic polling immediately!
+poller.startPolling(30000); // 30s interval
 
 function connectGateway(platform: Platform) {
   const restOptions: any = { version: platform.isDiscord ? '10' : '1' };
@@ -200,7 +187,6 @@ function connectGateway(platform: Platform) {
         }
       }
 
-      // Instead of just passing a string, we want the CommandHandler to be able to send, edit, and delete replies, and override poller status
       const responseText = await commandHandler.handleMessage(
         message.content,
         {

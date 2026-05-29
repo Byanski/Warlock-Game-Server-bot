@@ -1,13 +1,23 @@
 import { WarlockClient } from '../api/warlockClient';
 import { ChartGenerator } from './charts';
 
+export interface ServiceInstance {
+  guid: string;
+  host: string;
+  service: string;
+  name: string;
+}
+
 export class StatusPoller {
   private history: Record<string, { time: string, count: number }[]> = {};
   private failures: Record<string, number> = {};
   private lastStatus: Record<string, string> = {};
   private lastPlayerCount: Record<string, number> = {};
   private overrideStatus: Record<string, string | null> = {};
-  private client: WarlockClient;
+  public client: WarlockClient;
+  
+  // Cache of all discovered services (gameName -> identifiers)
+  private serviceCache: Record<string, ServiceInstance> = {};
 
   constructor(private postEmbedCallback: (gameName: string, embedPayload: any) => Promise<void>) {
     this.client = new WarlockClient();
@@ -15,77 +25,77 @@ export class StatusPoller {
 
   public setOverrideStatus(gameName: string, status: string | null) {
     this.overrideStatus[gameName] = status;
-    // Force an immediate update
     this.lastStatus[gameName] = ''; 
   }
 
-  private scheduleNextPoll(gameName: string, guid: string, serviceName: string, targetChannelId: string, baseIntervalMs: number) {
-    let interval = baseIntervalMs;
-    const failCount = this.failures[gameName] || 0;
-    
-    if (failCount > 0) {
-      // Exponential backoff: base * 2^failures, capped at 1 hour (3600000 ms)
-      interval = Math.min(baseIntervalMs * Math.pow(2, failCount - 1), 3600000);
-      console.log(`[StatusPoller] API Unreachable. Backing off for ${gameName}. Next poll in ${interval / 1000}s`);
-    }
-
-    setTimeout(() => {
-      this.pollAndBroadcast(gameName, guid, serviceName, targetChannelId, baseIntervalMs);
-    }, interval);
+  public getServiceByName(gameName: string): ServiceInstance | undefined {
+    return this.serviceCache[gameName.toLowerCase()];
   }
 
-  public async pollAndBroadcast(gameName: string, guid: string, serviceName: string, targetChannelId: string, baseIntervalMs: number) {
+  public async pollAllServices(intervalMs: number = 30000) {
     try {
-      console.log(`[StatusPoller] Polling status for ${gameName}...`);
+      // console.log(`[StatusPoller] Fetching all services from Warlock API...`);
+      const response = await this.client.getAllServices();
       
-      const hostId = process.env.WARLOCK_TARGET_HOST || 'local';
-      
-      let stdout = '';
-      let status = 'UNKNOWN';
-      let isRecovering = false;
-
-      try {
-        const details = await this.client.getServiceDetails(guid, hostId, serviceName);
-        
-        if (details.service) {
-          status = details.service.status || 'ONLINE';
-          stdout = JSON.stringify(details.service, null, 2);
-        } else {
-          status = details.status || 'ONLINE';
-          stdout = JSON.stringify(details, null, 2);
-        }
-        
-        const prevFailures = this.failures[gameName] || 0;
-        if (prevFailures > 0) {
-          isRecovering = true;
-          console.log(`[StatusPoller] Connection to Warlock restored for ${gameName}.`);
-        }
-        this.failures[gameName] = 0; // Reset failures
-
-      } catch (err: any) {
-        console.error('[StatusPoller] Caught error for', gameName, ':', err.message, err.stack);
-        status = 'OFFLINE';
-        stdout = `Error: ${err.message}`;
-        this.failures[gameName] = (this.failures[gameName] || 0) + 1;
+      if (!response || !response.success || !Array.isArray(response.services)) {
+        throw new Error('Failed to fetch services or invalid response format.');
       }
 
-      const failCount = this.failures[gameName] || 0;
+      for (const serviceObj of response.services) {
+        const gameName = serviceObj.service.toLowerCase();
+        
+        // Cache the identifiers for command handling
+        this.serviceCache[gameName] = {
+          guid: serviceObj.guid,
+          host: serviceObj.host,
+          service: serviceObj.service,
+          name: gameName
+        };
+
+        await this.processServiceStatus(gameName, serviceObj);
+      }
+
+    } catch (err: any) {
+      console.error('[StatusPoller] Error fetching services from Warlock API:', err.message);
+    } finally {
+      setTimeout(() => {
+        this.pollAllServices(intervalMs);
+      }, intervalMs);
+    }
+  }
+
+  private async processServiceStatus(gameName: string, serviceData: any) {
+    try {
+      let metrics: any = {};
+      try {
+        metrics = await this.client.getServiceDetails(serviceData.guid, serviceData.host, serviceData.service);
+      } catch (err: any) {
+        console.error(`[StatusPoller] Failed to get metrics for ${gameName}:`, err.message);
+      }
       
+      // The API often returns the metrics directly or nested in .service
+      const details = metrics.service ? metrics.service : metrics;
+
+      let status = details.status || 'UNKNOWN';
+      let isRecovering = false;
+      const prevFailures = this.failures[gameName] || 0;
+      
+      if (prevFailures > 0) {
+        isRecovering = true;
+        console.log(`[StatusPoller] Connection to Warlock restored for ${gameName}.`);
+      }
+      this.failures[gameName] = 0; // Reset failures
+
       if (this.overrideStatus[gameName]) {
         status = this.overrideStatus[gameName]!;
       }
 
-      // Build data for charts
       let playerCount = 0;
       if (status === 'running' || status === 'ONLINE') {
-        const parsedDetails = JSON.parse(stdout);
-        if (parsedDetails.player_count !== undefined) {
-          playerCount = parsedDetails.player_count;
-        } else {
-          const playerMatch = stdout.match(/"players":\s*(\d+)/i);
-          if (playerMatch && playerMatch[1]) {
-            playerCount = parseInt(playerMatch[1], 10);
-          }
+        if (details.player_count !== undefined) {
+          playerCount = details.player_count;
+        } else if (details.players && Array.isArray(details.players)) {
+          playerCount = details.players.length;
         }
       }
 
@@ -103,78 +113,57 @@ export class StatusPoller {
         hist.shift();
       }
 
-      // Determine if we should broadcast
-      const justFailed = failCount === 1;
-      const isOffline = failCount > 0;
+      const justFailed = prevFailures === 1;
       
-      const statusChanged = this.lastStatus[gameName] !== status;
-      const playersChanged = this.lastPlayerCount[gameName] !== playerCount;
-      
-      this.lastStatus[gameName] = status;
-      this.lastPlayerCount[gameName] = playerCount;
+      const labels = (hist || []).map(h => h.time);
+      const dataPoints = (hist || []).map(h => h.count);
+      const chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, serviceData.name || gameName);
 
-      // Always broadcast to ensure the dashboard remains live and recovers if deleted.
-      if (true) {
-        const labels = (hist || []).map(h => h.time);
-        const dataPoints = (hist || []).map(h => h.count);
-        const chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, gameName);
+      let titleStr = `🎮 ${(serviceData.name || gameName).toUpperCase()} Server Status`;
+      if (justFailed) titleStr += ` [API DISCONNECTED]`;
+      if (isRecovering) titleStr += ` [API RESTORED]`;
 
-        let titleStr = `🎮 ${gameName.toUpperCase()} Server Status`;
-        if (justFailed) titleStr += ` [API DISCONNECTED]`;
-        if (isRecovering) titleStr += ` [API RESTORED]`;
+      let descriptionText = `**Status:** ${status === 'running' || status === 'ONLINE' ? '🟢 Online' : (status === 'OFFLINE' ? '🔴 Offline' : `🟡 ${status}`)}\n`;
+      let embedFields: any[] = [];
 
-        let descriptionText = `**Status:** ${status === 'running' || status === 'ONLINE' ? '🟢 Online' : (status === 'OFFLINE' ? '🔴 Offline' : `🟡 ${status}`)}\n`;
-        let embedFields: any[] = [];
+      if (status === 'running' || status === 'ONLINE') {
+         // Some metrics like IP are only in serviceData, while memory/cpu are in details
+         const ipPort = serviceData.ip ? `${serviceData.ip}:${serviceData.port || ''}` : 'Unknown';
+         const players = details.player_count !== undefined ? `${details.player_count}/${serviceData.max_players || '?'}` : '0';
+         const memory = details.memory_usage ? (details.memory_usage > 1024 ? `${(details.memory_usage / 1024).toFixed(2)} GB` : `${details.memory_usage} MB`) : 'N/A';
+         const cpu = details.cpu_usage !== undefined ? `${details.cpu_usage}%` : 'N/A';
+         const responseTime = details.response_time || 'N/A';
 
-        if (status === 'running' || status === 'ONLINE') {
-           try {
-             const data = JSON.parse(stdout);
-             const ipPort = data.ip ? `${data.ip}:${data.port || ''}` : 'Unknown';
-             const players = data.player_count !== undefined ? `${data.player_count}/${data.max_players || '?'}` : '0';
-             const memory = data.memory_usage ? (data.memory_usage > 1024 ? `${(data.memory_usage / 1024).toFixed(2)} GB` : `${data.memory_usage} MB`) : 'N/A';
-             const cpu = data.cpu_usage !== undefined ? `${data.cpu_usage}%` : 'N/A';
-             const responseTime = data.response_time || 'N/A';
-
-             embedFields = [
-               { name: '🔌 Connection', value: `\`${ipPort}\``, inline: true },
-               { name: '👥 Players', value: `\`${players}\``, inline: true },
-               { name: '⏱️ Ping', value: `\`${responseTime}\``, inline: true },
-               { name: '🧠 Memory', value: `\`${memory}\``, inline: true },
-               { name: '⚙️ CPU', value: `\`${cpu}\``, inline: true },
-               { name: '🎮 Server', value: `\`${data.name || gameName}\``, inline: true }
-             ];
-           } catch (e) {
-             descriptionText += `\n**Raw Output:**\n\`\`\`text\n${stdout.substring(0, 500)}\n\`\`\``;
-           }
-        } else {
-           descriptionText += `\n**Error Details:**\n\`\`\`text\n${stdout.substring(0, 500)}\n\`\`\``;
-        }
-
-        const embedPayload = {
-          embeds: [{
-            title: titleStr,
-            description: descriptionText,
-            fields: embedFields.length > 0 ? embedFields : undefined,
-            color: status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245,
-            image: { url: chartUrl },
-            footer: { text: 'Warlock Monitor' },
-            timestamp: new Date().toISOString()
-          }]
-        };
-
-        await this.postEmbedCallback(gameName, embedPayload);
+         embedFields = [
+           { name: '🔌 Connection', value: `\`${ipPort}\``, inline: true },
+           { name: '👥 Players', value: `\`${players}\``, inline: true },
+           { name: '⏱️ Ping', value: `\`${responseTime}\``, inline: true },
+           { name: '🧠 Memory', value: `\`${memory}\``, inline: true },
+           { name: '⚙️ CPU', value: `\`${cpu}\``, inline: true },
+           { name: '🎮 Server', value: `\`${serviceData.name || gameName}\``, inline: true }
+         ];
       }
 
+      const embedPayload = {
+        embeds: [{
+          title: titleStr,
+          description: descriptionText,
+          fields: embedFields.length > 0 ? embedFields : undefined,
+          color: status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245,
+          image: { url: chartUrl },
+          footer: { text: 'Warlock Monitor' },
+          timestamp: new Date().toISOString()
+        }]
+      };
+
+      await this.postEmbedCallback(gameName, embedPayload);
+
     } catch (err) {
-      console.error(`[StatusPoller] Critical failure in poll loop for ${gameName}:`, err);
-    } finally {
-      // Always schedule the next poll
-      this.scheduleNextPoll(gameName, guid, serviceName, targetChannelId, baseIntervalMs);
+      console.error(`[StatusPoller] Error processing status for ${gameName}:`, err);
     }
   }
 
-  public startPolling(gameName: string, guid: string, serviceName: string, targetChannelId: string, intervalMs: number = 60000) {
-    // Kick off the first poll
-    this.pollAndBroadcast(gameName, guid, serviceName, targetChannelId, intervalMs);
+  public startPolling(intervalMs: number = 30000) {
+    this.pollAllServices(intervalMs);
   }
 }
