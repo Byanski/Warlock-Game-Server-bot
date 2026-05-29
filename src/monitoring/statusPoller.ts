@@ -28,8 +28,27 @@ export class StatusPoller {
     this.lastStatus[gameName] = ''; 
   }
 
-  public getServiceByName(gameName: string): ServiceInstance | undefined {
-    return this.serviceCache[gameName.toLowerCase()];
+  public getServiceByName(name: string): ServiceInstance | undefined {
+    if (!name) return undefined;
+    const lowerName = name.toLowerCase();
+    
+    if (this.serviceCache[lowerName]) {
+      return this.serviceCache[lowerName];
+    }
+    
+    // Fuzzy search
+    for (const key of Object.keys(this.serviceCache)) {
+      if (key.includes(lowerName)) {
+        return this.serviceCache[key];
+      }
+      
+      const svc = this.serviceCache[key];
+      if (svc && svc.name && svc.name.toLowerCase().includes(lowerName)) {
+        return svc;
+      }
+    }
+    
+    return undefined;
   }
 
   public async pollAllServices(intervalMs: number = 30000) {

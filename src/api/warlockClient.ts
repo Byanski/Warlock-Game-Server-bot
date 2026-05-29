@@ -145,6 +145,15 @@ export class WarlockClient {
     return await res.json();
   }
 
+  public async getServiceConfigs(guid: string, host: string, service: string) {
+    const url = `${this.baseUrl}/api/service/configs/${guid}/${host}/${service}`;
+    const res = await this.request(url, {
+      method: 'GET',
+      headers: this.getHeaders()
+    });
+    return await res.json();
+  }
+
   public async getAllServices() {
     const url = `${this.baseUrl}/api/services`;
     const res = await this.request(url, {

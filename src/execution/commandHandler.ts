@@ -93,7 +93,59 @@ export class CommandHandler {
         }
         return null; // Return null since we handled replies manually
       } else {
-        // It's a custom command (e.g. save, broadcast)
+        // Intercept Palworld specific commands if the service is Palworld
+        const isPalworld = service.toLowerCase().includes('palworld');
+        const palworldCommands = ['announce', 'kick', 'ban', 'unban', 'save', 'shutdown', 'force_stop', 'players'];
+
+        if (isPalworld && palworldCommands.includes(apiCommand)) {
+          if (callbacks) {
+            const msgId = await callbacks.reply({ content: `⏳ Executing Palworld API command \`${apiCommand} ${args}\`...` });
+            
+            try {
+              // 1. Fetch config to get Admin Password and REST API Port dynamically
+              const configs = await this.client.getServiceConfigs(guid, host, service);
+              
+              const adminPasswordConfig = configs.configs?.find((c: any) => c.option === 'Admin Password');
+              const adminPassword = adminPasswordConfig?.value || '';
+
+              const restPortConfig = configs.configs?.find((c: any) => c.option === 'REST API Port');
+              const restPort = restPortConfig?.value || 8212;
+
+              // 2. Initialize PalworldClient
+              const { PalworldClient } = require('../api/palworldClient');
+              // We need the service IP. For simplicity, we can fetch getServiceDetails again or grab it from serviceDef?
+              // serviceDef doesn't store IP right now. Let's fetch details.
+              const detailsData = await this.client.getServiceDetails(guid, host, service);
+              const serverIp = detailsData.service?.ip || '127.0.0.1';
+
+              const pwClient = new PalworldClient(serverIp, restPort, adminPassword);
+
+              // 3. Execute command
+              let result: any;
+              switch (apiCommand) {
+                case 'announce': result = await pwClient.announce(args); break;
+                case 'kick': result = await pwClient.kick(args.split(' ')[0], args.split(' ').slice(1).join(' ')); break;
+                case 'ban': result = await pwClient.ban(args.split(' ')[0], args.split(' ').slice(1).join(' ')); break;
+                case 'unban': result = await pwClient.unban(args.split(' ')[0]); break;
+                case 'save': result = await pwClient.save(); break;
+                case 'shutdown': result = await pwClient.shutdown(60, args); break;
+                case 'force_stop': result = await pwClient.forceStop(); break;
+                case 'players': result = await pwClient.getPlayers(); break;
+              }
+
+              if (msgId) {
+                await callbacks.editReply(msgId, { content: `✅ Palworld API response:\n\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 1900)}\n\`\`\`` });
+              }
+            } catch (err: any) {
+              if (msgId) {
+                await callbacks.editReply(msgId, { content: `❌ Palworld API error: ${err.message}` });
+              }
+            }
+          }
+          return null;
+        }
+
+        // It's a custom command (e.g. broadcast)
         // Send it directly to Warlock's service console
         if (callbacks) {
           const msgId = await callbacks.reply({ content: `⏳ Executing \`${apiCommand} ${args}\`...` });
