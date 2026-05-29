@@ -115,10 +115,38 @@ export class StatusPoller {
         if (justFailed) titleStr += ` [API DISCONNECTED]`;
         if (isRecovering) titleStr += ` [API RESTORED]`;
 
+        let descriptionText = `**Status:** ${status === 'running' || status === 'ONLINE' ? '🟢 Online' : (status === 'OFFLINE' ? '🔴 Offline' : `🟡 ${status}`)}\n`;
+        let embedFields: any[] = [];
+
+        if (status === 'running' || status === 'ONLINE') {
+           try {
+             const data = JSON.parse(stdout);
+             const ipPort = data.ip ? `${data.ip}:${data.port || ''}` : 'Unknown';
+             const players = data.player_count !== undefined ? `${data.player_count}/${data.max_players || '?'}` : '0';
+             const memory = data.memory_usage ? (data.memory_usage > 1024 ? `${(data.memory_usage / 1024).toFixed(2)} GB` : `${data.memory_usage} MB`) : 'N/A';
+             const cpu = data.cpu_usage !== undefined ? `${data.cpu_usage}%` : 'N/A';
+             const responseTime = data.response_time || 'N/A';
+
+             embedFields = [
+               { name: '🔌 Connection', value: `\`${ipPort}\``, inline: true },
+               { name: '👥 Players', value: `\`${players}\``, inline: true },
+               { name: '⏱️ Ping', value: `\`${responseTime}\``, inline: true },
+               { name: '🧠 Memory', value: `\`${memory}\``, inline: true },
+               { name: '⚙️ CPU', value: `\`${cpu}\``, inline: true },
+               { name: '🎮 Server', value: `\`${data.name || gameName}\``, inline: true }
+             ];
+           } catch (e) {
+             descriptionText += `\n**Raw Output:**\n\`\`\`text\n${stdout.substring(0, 500)}\n\`\`\``;
+           }
+        } else {
+           descriptionText += `\n**Error Details:**\n\`\`\`text\n${stdout.substring(0, 500)}\n\`\`\``;
+        }
+
         const embedPayload = {
           embeds: [{
             title: titleStr,
-            description: `**Status:** ${status}\n**Metrics:**\n\`\`\`json\n${stdout.substring(0, 1000)}\n\`\`\``,
+            description: descriptionText,
+            fields: embedFields.length > 0 ? embedFields : undefined,
             color: status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245,
             image: { url: chartUrl },
             footer: { text: 'Warlock Monitor' },
