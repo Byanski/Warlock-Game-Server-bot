@@ -1,15 +1,17 @@
-# Warlock Game Server Bot (Fluxer Edition)
+# Warlock Game Server Bot
 
-This is a production-grade tracking and management bot designed for [Fluxer](https://docs.fluxer.app/), integrating directly with the [Warlock Game Server Manager](https://github.com/BitsNBytes25/Warlock).
+This is a production-grade tracking and management bot designed for **Discord** and **Fluxer**, integrating directly with the [Warlock Game Server Manager](https://github.com/BitsNBytes25/Warlock).
 
-Instead of running local subprocesses, this bot communicates directly with Warlock's REST API. It offers dynamic command mapping, secure REST execution, and rich time-series metric charting for Discord/Fluxer interfaces.
+Instead of running local subprocesses, this bot communicates directly with Warlock's REST API. It offers dynamic command mapping, secure REST execution, and rich time-series metric charting for Discord and Fluxer interfaces.
 
 ## Features
 
-- **REST API Integration:** Natively interfaces with Warlock's built-in API.
+- **Dual Platform Support:** Natively interfaces with both Discord and Fluxer simultaneously.
+- **Persistent Live Dashboard:** Generates beautiful dark-mode charts of game server metrics using `quickchart-js`. The dashboard updates live every 30 seconds by editing a single persistent message, preventing channel spam. 
+- **Auto-Recovery:** If the dashboard message is ever accidentally deleted, the bot will automatically regenerate it on its next polling cycle.
+- **Dynamic Command Feedback:** Emits temporary status messages during admin operations (e.g. "Server is starting...") that automatically update and clean themselves up.
 - **Dynamic Configuration Schema:** Manage supported games, commands, and regex validations without touching code via `game_commands.json`.
-- **Live Status Polling:** Generates beautiful dark-mode charts of game server player metrics using `quickchart-js`.
-- **Docker Ready:** Built to run on any Linux host flawlessly without dependency headaches.
+- **Docker Ready:** Built to run on any host flawlessly without dependency headaches. State is maintained across restarts via a mapped volume.
 
 ## Configuration
 
@@ -19,22 +21,30 @@ Copy the environment template to begin:
 cp .env.example .env
 ```
 
-Edit your `.env` file to include your Fluxer Bot token, your Warlock API credentials, and the target status channel ID:
+Edit your `.env` file to include your API credentials. You can enable Discord, Fluxer, or both by providing the respective tokens:
 
 ```env
-FLUXER_TOKEN=your_bot_token_here
-STATUS_CHANNEL_ID=1234567890
-
+# Warlock API Settings
 WARLOCK_API_URL=http://192.168.1.50:8080
 WARLOCK_API_TOKEN=your_auth_token_here
 WARLOCK_TARGET_HOST=local
+
+# Discord Bot Configuration
+DISCORD_TOKEN=your_discord_bot_token_here
+DISCORD_STATUS_CHANNEL_ID=your_discord_channel_id_here
+DISCORD_ADMIN_ROLE_ID=your_discord_admin_role_id_here
+
+# Fluxer Bot Configuration
+FLUXER_TOKEN=your_bot_token_here
+STATUS_CHANNEL_ID=your_fluxer_channel_id_here
+ADMIN_ROLE_ID=your_fluxer_admin_role_id_here
 ```
 
 ## Running the Bot
 
 ### Using Docker (Recommended)
 
-The easiest way to run the bot is via Docker Compose. This ensures all dependencies are containerized.
+The easiest way to run the bot is via Docker Compose. This ensures all dependencies are containerized and persistent state is managed properly.
 
 ```bash
 docker-compose up -d --build
@@ -45,7 +55,7 @@ You can view the logs with:
 docker-compose logs -f
 ```
 
-*Note: The `game_commands.json` file is mounted as a volume. You can update the command definitions and they will be reflected without needing to rebuild the container.*
+*Note: The `game_commands.json` file and the `data/` folder are mounted as volumes. Your live dashboard will survive container rebuilds!*
 
 ### Running Locally (Node.js)
 
@@ -61,6 +71,16 @@ npm run build
 # Start the bot
 npm start
 ```
+
+## Commands
+
+Authorized administrators can control game servers directly from chat using the syntax:
+`!w <game_name> <command> [arguments]`
+
+Examples:
+- `!w windrose start`
+- `!w windrose stop`
+- `!w windrose kick SomePlayer`
 
 ## Adding Game Commands
 
