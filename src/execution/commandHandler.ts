@@ -18,19 +18,15 @@ export class CommandHandler {
 
     const body = messageContent.slice(prefix.length).trim();
     
-    // Parse: <game_name> "<api_command> [arguments]"
-    const match = body.match(/^(\w+)\s+"([^"]+)"$/);
-    if (!match) {
-      return '❌ Invalid syntax. Use: `!w <game_name> "<command> [args]"`';
+    // Parse: <game_name> <api_command> [arguments]
+    const parts = body.split(' ');
+    if (parts.length < 2) {
+      return '❌ Invalid syntax. Use: `!w <game_name> <command> [args]`';
     }
 
-    const gameName = match[1] as string;
-    const payload = (match[2] as string).trim();
-
-    // Split payload into command and args
-    const parts = payload.split(' ');
-    const apiCommand = parts[0] as string;
-    const args = parts.slice(1).join(' ');
+    const gameName = parts[0];
+    const apiCommand = parts[1];
+    const args = parts.slice(2).join(' ');
 
     const schema = this.schemaLoader.getSchema();
 
