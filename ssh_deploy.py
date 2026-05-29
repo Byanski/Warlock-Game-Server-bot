@@ -11,5 +11,5 @@ def run_ssh_command(host, user, password, command):
         client.close()
 
 if __name__ == "__main__":
-    commands = "cd ~/warlockbot/Warlock-Game-Server-bot && git pull && docker-compose down && docker-compose up -d --build && sleep 10 && docker-compose logs --tail=40"
+    commands = "cd ~/warlockbot/Warlock-Game-Server-bot && git pull && sed -i 's/WARLOCK_TARGET_HOST=local/WARLOCK_TARGET_HOST=127.0.0.1/g' .env && docker-compose down && docker-compose up -d --build && sleep 10 && docker-compose logs --tail=40"
     run_ssh_command("10.10.1.16", "llm", "password", commands)
