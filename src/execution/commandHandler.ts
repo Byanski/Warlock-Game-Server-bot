@@ -303,16 +303,15 @@ export class CommandHandler {
             const msgId = await callbacks.reply({ content: `⏳ Executing VEIN API command \`${apiCommand}\`...` });
             
             try {
-              // 1. Fetch details to get server IP and primary port
-              const detailsData = await this.client.getServiceDetails(guid, host, service);
-              const serverIp = detailsData.service?.ip || '127.0.0.1';
-              const primaryPort = detailsData.service?.port;
-
-              // 2. Fetch config to get HTTP Port dynamically
+              // 1. Fetch config to get HTTP Port dynamically
               const configs = await this.client.getServiceConfigs(guid, host, service);
               
-              const httpPortConfig = configs.configs?.find((c: any) => c.option === 'HTTP Port' || c.option === 'HTTPPort');
-              const httpPort = httpPortConfig?.value ? parseInt(httpPortConfig.value) : (primaryPort || 4726);
+              const httpPortConfig = configs.configs?.find((c: any) => c.option === 'HTTP Port' || c.option === 'HTTPPort' || c.option === 'Port');
+              const httpPort = httpPortConfig?.value ? parseInt(httpPortConfig.value) : 8080;
+
+              // 2. Fetch details to get server IP
+              const detailsData = await this.client.getServiceDetails(guid, host, service);
+              const serverIp = detailsData.service?.ip || '127.0.0.1';
 
               // 3. Initialize VeinClient
               const { VeinClient } = require('../api/veinClient');
