@@ -48,6 +48,7 @@ export class StatusPoller {
         this.failures[gameName] = 0; // Reset failures
 
       } catch (err: any) {
+        console.error('[StatusPoller] Caught error for', gameName, ':', err.message, err.stack);
         status = 'OFFLINE';
         stdout = `Error: ${err.message}`;
         this.failures[gameName] = (this.failures[gameName] || 0) + 1;

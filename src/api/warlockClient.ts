@@ -27,7 +27,13 @@ export class WarlockClient {
     }
 
     console.log('[WarlockClient] Fetching login page to grab CSRF token...');
-    const getRes = await this.fetchWithCookies(`${this.baseUrl}/login`, { method: 'GET' });
+    let getRes;
+    try {
+      getRes = await this.fetchWithCookies(`${this.baseUrl}/login`, { method: 'GET' });
+    } catch (err: any) {
+      console.error('[WarlockClient] Network error during GET /login:', err);
+      throw err;
+    }
     const html = await getRes.text();
     
     const $ = cheerio.load(html);
