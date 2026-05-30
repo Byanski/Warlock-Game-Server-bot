@@ -51,6 +51,10 @@ export class StatusPoller {
     return undefined;
   }
 
+  public getAllKnownServices(): ServiceInstance[] {
+    return Object.values(this.serviceCache);
+  }
+
   public async pollAllServices(intervalMs: number = 30000) {
     try {
       // console.log(`[StatusPoller] Fetching all services from Warlock API...`);

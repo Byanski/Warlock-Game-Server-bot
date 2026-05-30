@@ -121,6 +121,49 @@ export class CommandHandler {
       }
     }
 
+    if ((gameName === 'start' || gameName === 'stop') && apiCommand === 'all') {
+      const action = gameName; // 'start' or 'stop'
+      const allServices = poller.getAllKnownServices();
+      
+      if (allServices.length === 0) {
+        return `❌ No active instances found.`;
+      }
+      
+      if (callbacks) {
+        const overrideState = action === 'start' ? 'Starting...' : 'Stopping...';
+        const msgId = await callbacks.reply({ content: `⏳ ${overrideState} all ${allServices.length} servers...` });
+        
+        for (const svc of allServices) {
+          try {
+            poller.setOverrideStatus(svc.name, overrideState);
+            await this.client.controlService(svc.guid, svc.host, svc.service, action);
+          } catch (err) {
+            console.error(`Failed to ${action} ${svc.name}:`, err);
+          }
+        }
+        
+        if (msgId) {
+          const finalState = action === 'start' ? 'running' : 'stopped';
+          await callbacks.editReply(msgId, { content: `✅ All ${allServices.length} servers are now ${finalState}.` });
+          
+          setTimeout(async () => {
+            try {
+              await callbacks.deleteReply(msgId);
+              if (callbacks.deleteCommandMessage) {
+                await callbacks.deleteCommandMessage();
+              }
+            } catch (e) {}
+          }, 7000);
+        }
+        return null;
+      }
+      
+      for (const svc of allServices) {
+        await this.client.controlService(svc.guid, svc.host, svc.service, action);
+      }
+      return `✅ All servers are now ${action === 'start' ? 'running' : 'stopped'}.`;
+    }
+
     const serviceDef = poller.getServiceByName(gameName);
     
     if (!serviceDef) {
