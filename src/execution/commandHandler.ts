@@ -121,47 +121,107 @@ export class CommandHandler {
       }
     }
 
-    if ((gameName === 'start' || gameName === 'stop') && apiCommand === 'all') {
-      const action = gameName; // 'start' or 'stop'
+    if ((gameName === 'start' || gameName === 'stop' || gameName === 'restart') && apiCommand === 'all') {
+      const action = gameName; // 'start', 'stop', or 'restart'
       const allServices = poller.getAllKnownServices();
       
       if (allServices.length === 0) {
         return `❌ No active instances found.`;
       }
       
-      if (callbacks) {
+      if (!callbacks) return `❌ Command not supported in this context.`;
+      
+      const waitForStatus = async (targetStatus: string, pendingServices: typeof allServices) => {
+        let remaining = [...pendingServices];
+        for (let i = 0; i < 30; i++) { // wait up to 60 seconds
+          await new Promise(r => setTimeout(r, 2000));
+          const stillPending = [];
+          for (const svc of remaining) {
+            try {
+              const details = await this.client.getServiceDetails(svc.guid, svc.host, svc.service);
+              const currentStatus = details.service ? details.service.status : details.status;
+              if (currentStatus === targetStatus || (targetStatus === 'running' && currentStatus === 'ONLINE') || (targetStatus === 'stopped' && currentStatus === 'OFFLINE')) {
+                // reached target
+              } else {
+                stillPending.push(svc);
+              }
+            } catch (e) {
+              if (targetStatus === 'stopped') {
+                // 404 or error implies stopped
+              } else {
+                stillPending.push(svc);
+              }
+            }
+          }
+          remaining = stillPending;
+          if (remaining.length === 0) break;
+        }
+        return remaining.length === 0;
+      };
+
+      if (action === 'restart') {
+        const msgId = await callbacks.reply({ content: `⏳ Restarting all ${allServices.length} servers... (Waiting for shutdown)` });
+        
+        for (const svc of allServices) {
+          poller.setOverrideStatus(svc.name, 'Stopping...');
+          try { await this.client.controlService(svc.guid, svc.host, svc.service, 'stop'); } catch (e) {}
+        }
+        
+        await waitForStatus('stopped', allServices);
+        
+        if (msgId) {
+          await callbacks.editReply(msgId, { content: `⏳ Restarting all ${allServices.length} servers... (Waiting for startup)` });
+        }
+        
+        for (const svc of allServices) {
+          poller.setOverrideStatus(svc.name, 'Starting...');
+          try { await this.client.controlService(svc.guid, svc.host, svc.service, 'start'); } catch (e) {}
+        }
+        
+        const success = await waitForStatus('running', allServices);
+        
+        if (msgId) {
+          await callbacks.editReply(msgId, { content: success ? `✅ All ${allServices.length} servers are now running.` : `⚠️ Restart sequence completed but some servers didn't start properly.` });
+        }
+        
+        for (const svc of allServices) poller.setOverrideStatus(svc.name, null);
+        
+        setTimeout(async () => {
+          try {
+            if (msgId) await callbacks.deleteReply(msgId);
+            if (callbacks.deleteCommandMessage) await callbacks.deleteCommandMessage();
+          } catch (e) {}
+        }, 7000);
+        
+        return null;
+      } else {
         const overrideState = action === 'start' ? 'Starting...' : 'Stopping...';
+        const targetStatus = action === 'start' ? 'running' : 'stopped';
         const msgId = await callbacks.reply({ content: `⏳ ${overrideState} all ${allServices.length} servers...` });
         
         for (const svc of allServices) {
-          try {
-            poller.setOverrideStatus(svc.name, overrideState);
-            await this.client.controlService(svc.guid, svc.host, svc.service, action);
-          } catch (err) {
-            console.error(`Failed to ${action} ${svc.name}:`, err);
-          }
+          poller.setOverrideStatus(svc.name, overrideState);
+          try { await this.client.controlService(svc.guid, svc.host, svc.service, action); } catch (e) {}
         }
         
+        const success = await waitForStatus(targetStatus, allServices);
+        
+        const finalState = action === 'start' ? 'running' : 'stopped';
         if (msgId) {
-          const finalState = action === 'start' ? 'running' : 'stopped';
-          await callbacks.editReply(msgId, { content: `✅ All ${allServices.length} servers are now ${finalState}.` });
-          
-          setTimeout(async () => {
-            try {
-              await callbacks.deleteReply(msgId);
-              if (callbacks.deleteCommandMessage) {
-                await callbacks.deleteCommandMessage();
-              }
-            } catch (e) {}
-          }, 7000);
+          await callbacks.editReply(msgId, { content: success ? `✅ All ${allServices.length} servers are now ${finalState}.` : `⚠️ API timeout: Not all servers reached ${finalState} state.` });
         }
+        
+        for (const svc of allServices) poller.setOverrideStatus(svc.name, null);
+
+        setTimeout(async () => {
+          try {
+            if (msgId) await callbacks.deleteReply(msgId);
+            if (callbacks.deleteCommandMessage) await callbacks.deleteCommandMessage();
+          } catch (e) {}
+        }, 7000);
+        
         return null;
       }
-      
-      for (const svc of allServices) {
-        await this.client.controlService(svc.guid, svc.host, svc.service, action);
-      }
-      return `✅ All servers are now ${action === 'start' ? 'running' : 'stopped'}.`;
     }
 
     const serviceDef = poller.getServiceByName(gameName);
