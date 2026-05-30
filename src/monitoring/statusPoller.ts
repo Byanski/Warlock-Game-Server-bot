@@ -134,9 +134,32 @@ export class StatusPoller {
 
       const justFailed = prevFailures === 1;
       
-      const labels = (hist || []).map(h => h.time);
-      const dataPoints = (hist || []).map(h => h.count);
-      const chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, serviceData.name || gameName);
+      let showGraph = false;
+      try {
+        const stateFile = require('path').join(__dirname, '..', '..', 'data', 'graphState.json');
+        if (require('fs').existsSync(stateFile)) {
+          const state = JSON.parse(require('fs').readFileSync(stateFile, 'utf8'));
+          if (state.showGlobalGraph === true) {
+            showGraph = true;
+          }
+        } else {
+          // Default to reading from warlock config if global state isn't set
+          const configs = await this.client.getServiceConfigs(serviceData.guid, serviceData.host, serviceData.service);
+          const graphConfig = configs.configs?.find((c: any) => c.option === 'Show Graph' || c.option === 'ShowGraph');
+          if (graphConfig && (graphConfig.value === 'true' || graphConfig.value === 'yes' || graphConfig.value === '1' || graphConfig.value === 'on')) {
+            showGraph = true;
+          }
+        }
+      } catch (err) {
+        // Ignore errors fetching config
+      }
+
+      let chartUrl: string | undefined = undefined;
+      if (showGraph) {
+        const labels = (hist || []).map(h => h.time);
+        const dataPoints = (hist || []).map(h => h.count);
+        chartUrl = ChartGenerator.generatePlayerChart(labels, dataPoints, serviceData.name || gameName);
+      }
 
       let titleStr = `🎮 ${(serviceData.name || gameName).toUpperCase()} Server Status`;
       if (justFailed) titleStr += ` [API DISCONNECTED]`;
@@ -169,7 +192,7 @@ export class StatusPoller {
           description: descriptionText,
           fields: embedFields.length > 0 ? embedFields : undefined,
           color: status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245,
-          image: { url: chartUrl },
+          image: chartUrl ? { url: chartUrl } : undefined,
           footer: { text: 'Warlock Monitor' },
           timestamp: new Date().toISOString()
         }]

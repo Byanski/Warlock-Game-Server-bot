@@ -254,6 +254,21 @@ function connectGateway(platform: Platform) {
         return;
       }
 
+      if (message.content.startsWith('!w graph')) {
+        const parts = message.content.split(' ');
+        const state = parts[2]?.toLowerCase() === 'on' || parts[1]?.toLowerCase() === 'on';
+        const stateFile = path.join(__dirname, '..', 'data', 'graphState.json');
+        try {
+          fs.writeFileSync(stateFile, JSON.stringify({ showGlobalGraph: state }));
+        } catch (e) {
+          console.error('[App] Failed to save graph state:', e);
+        }
+        
+        await sendMessage(platform, message.channel_id!, { content: `✅ Global graphs are now turned **${state ? 'ON' : 'OFF'}**.` });
+        await deleteMessage(platform, message.channel_id!, message.id!);
+        return;
+      }
+
       const responseText = await commandHandler.handleMessage(
         message.content,
         {
