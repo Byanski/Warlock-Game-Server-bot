@@ -111,40 +111,55 @@ export async function deleteMessage(platform: Platform, channelId: string, messa
 
 export async function purgeMessages(platform: Platform, channelId: string, limit: number): Promise<void> {
   try {
-    const url = platform.isDiscord 
-      ? `https://discord.com/api/v10/channels/${channelId}/messages?limit=${limit}` 
-      : `https://api.fluxer.app/v1/channels/${channelId}/messages?limit=${limit}`;
+    let remaining = limit;
+    let lastMessageId: string | undefined = undefined;
 
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'Authorization': `Bot ${platform.token}` }
-    });
-    
-    if (!res.ok) return;
-    const messages = await res.json();
-    if (!Array.isArray(messages) || messages.length === 0) return;
+    while (remaining > 0) {
+      const fetchLimit = Math.min(remaining, 100);
+      let query = `limit=${fetchLimit}`;
+      if (lastMessageId) query += `&before=${lastMessageId}`;
 
-    const messageIds = messages.map((m: any) => m.id);
+      const url = platform.isDiscord 
+        ? `https://discord.com/api/v10/channels/${channelId}/messages?${query}` 
+        : `https://api.fluxer.app/v1/channels/${channelId}/messages?${query}`;
 
-    if (platform.isDiscord && messageIds.length > 1) {
-      const bulkUrl = `https://discord.com/api/v10/channels/${channelId}/messages/bulk-delete`;
-      const bulkRes = await fetch(bulkUrl, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bot ${platform.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ messages: messageIds })
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bot ${platform.token}` }
       });
-      if (!bulkRes.ok) {
+      
+      if (!res.ok) break;
+      const messages = await res.json();
+      if (!Array.isArray(messages) || messages.length === 0) break;
+
+      const messageIds = messages.map((m: any) => m.id);
+      lastMessageId = messageIds[messageIds.length - 1];
+
+      if (platform.isDiscord && messageIds.length > 1) {
+        const bulkUrl = `https://discord.com/api/v10/channels/${channelId}/messages/bulk-delete`;
+        const bulkRes = await fetch(bulkUrl, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bot ${platform.token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ messages: messageIds })
+        });
+        if (!bulkRes.ok) {
+          for (const id of messageIds) {
+            await deleteMessage(platform, channelId, id);
+          }
+        }
+      } else {
         for (const id of messageIds) {
           await deleteMessage(platform, channelId, id);
         }
       }
-    } else {
-      for (const id of messageIds) {
-        await deleteMessage(platform, channelId, id);
-      }
+      
+      remaining -= messageIds.length;
+      if (messages.length < fetchLimit) break;
+      
+      await new Promise(r => setTimeout(r, 1000)); // Delay to avoid strict rate limiting
     }
   } catch (error) {
     console.error(`[${platform.name} API] Error purging messages:`, error);
@@ -233,7 +248,7 @@ function connectGateway(platform: Platform) {
         const parts = message.content.split(' ');
         let amount = parseInt(parts[2] || '') || parseInt(parts[1] || ''); // Support "!w purge 50" or "!w purge 1-100" meaning !w purge <num>
         if (!amount || amount < 1) amount = 10;
-        if (amount > 100) amount = 100;
+        if (amount > 500) amount = 500;
         
         await purgeMessages(platform, message.channel_id!, amount + 1); // +1 to include the purge command itself
         return;
