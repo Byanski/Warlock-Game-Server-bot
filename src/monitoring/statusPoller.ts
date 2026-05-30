@@ -166,32 +166,30 @@ export class StatusPoller {
       if (isRecovering) titleStr += ` [API RESTORED]`;
 
       let descriptionText = `**Status:** ${status === 'running' || status === 'ONLINE' ? '🟢 Online' : (status === 'OFFLINE' ? '🔴 Offline' : `🟡 ${status}`)}\n`;
-      let embedFields: any[] = [];
 
       if (status === 'running' || status === 'ONLINE') {
-         // Some metrics like IP are only in serviceData, while memory/cpu are in details
          const ipPort = serviceData.ip ? `${serviceData.ip}:${serviceData.port || ''}` : 'Unknown';
          const players = details.player_count !== undefined ? `${details.player_count}/${serviceData.max_players || '?'}` : '0';
          const memory = details.memory_usage ? (details.memory_usage > 1024 ? `${(details.memory_usage / 1024).toFixed(2)} GB` : `${details.memory_usage} MB`) : 'N/A';
          const cpu = details.cpu_usage !== undefined ? `${details.cpu_usage}%` : 'N/A';
          const responseTime = details.response_time || 'N/A';
 
-         embedFields = [
-           { name: '🔌 Connection', value: `\`${ipPort}\``, inline: true },
-           { name: '👥 Players', value: `\`${players}\``, inline: true },
-           { name: '⏱️ Ping', value: `\`${responseTime}\``, inline: true },
-           { name: '🧠 Memory', value: `\`${memory}\``, inline: true },
-           { name: '⚙️ CPU', value: `\`${cpu}\``, inline: true },
-           { name: '🎮 Server', value: `\`${serviceData.name || gameName}\``, inline: true }
-         ];
+         descriptionText += `\n**🔌 Connect:** \`${ipPort}\``;
+         descriptionText += `\n**👥 Players:** \`${players}\`  |  **⏱️ Ping:** \`${responseTime}\``;
+         descriptionText += `\n**🧠 RAM:** \`${memory}\`  |  **⚙️ CPU:** \`${cpu}\``;
+      }
+      
+      let embedColor = status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245;
+      const themeColor = process.env.THEME_COLOR || process.env.EMBED_COLOR;
+      if (themeColor) {
+        embedColor = parseInt(themeColor.replace('#', ''), 16) || embedColor;
       }
 
       const embedPayload = {
         embeds: [{
           title: titleStr,
           description: descriptionText,
-          fields: embedFields.length > 0 ? embedFields : undefined,
-          color: status === 'ONLINE' || status === 'running' ? 0x57F287 : 0xED4245,
+          color: embedColor,
           image: chartUrl ? { url: chartUrl } : undefined,
           footer: { text: 'Warlock Monitor' },
           timestamp: new Date().toISOString()
